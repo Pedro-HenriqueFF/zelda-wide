@@ -417,7 +417,7 @@ void Widescreen::renderCore(Nes& nes, double windowAspect, Canvas& out) {
         if (topBand == 0) drawOverhang(nes, out, roomX, roomY, topBand, flash, ox, oy);
         drawTrueSprites(nes, out, roomX, roomY, topBand, flash, ox, oy);
         drawSplashes(nes, out, roomX, roomY, topBand, flash, ox, oy);
-        if (shadows && shadows->handOffPending() && layout == Layout::World && kind == Kind::Overworld && view.level == 0) drawShadowSprites(out, camX, camY, topBand, view.room, view.slot, true);
+        if (shadows && shadows->bridgeGame() && view.mode == kModeEnter && layout == Layout::World && kind == Kind::Overworld && view.level == 0) drawShadowSprites(out, camX, camY, topBand, view.room, view.slot, true);
         roomWaterOk = waterDone && waterOn() && layout == Layout::World && terrainW == out.w && terrainH == out.h && terrainCamX == camX && terrainCamY == camY
                       && terrainMask.size() == (size_t)out.w * (out.h + kWaterMargin);
         if (roomWaterOk) { perf::Scope perfWater(perf::kRoomWater); roomWater(out, camX, camY, true); }      // the game's picture of this screen gets reflections of Link, monsters and shots, the same water

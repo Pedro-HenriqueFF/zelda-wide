@@ -240,7 +240,9 @@ int main(int argc, char** argv) {
         const auto pEmu = perf::now();
         if (saveFade > 0 && saveFade < kFadeFrames) {
             saveFade++;
-        } else if (!wide.gliding() && !wide.mazeFading()) {
+        } else if (wide.gliding()) {
+            shadows.animate();                                   // the monsters of the neighbouring screens keep moving while the camera glides
+        } else if (!wide.mazeFading()) {
             nes.pad1 = input;
             if (saveFade >= kFadeFrames) { saveFade = 0; holdBlack = 1; wide.requestSave(nes); }
             wide.prepareFrame(nes);
@@ -277,7 +279,7 @@ int main(int argc, char** argv) {
                 if (skipped) {
                     nes.runFrame();            // let the game finish its first frame on the new screen
                     wide.resetLag();
-                    shadows.armHandOff();      // the monsters of the shadow of this screen take over once the game has made its own (N5)
+                    shadows.armHandOff(nes);  // the monsters of the shadow of this screen take over once the game has made its own (N5)
                     wide.startGlide(nes);
                 }
             }

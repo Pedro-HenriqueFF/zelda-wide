@@ -1,6 +1,6 @@
 # Zelda Wide
 
-[![CI](https://github.com/OWNER/zelda-wide/actions/workflows/ci.yml/badge.svg)](https://github.com/OWNER/zelda-wide/actions/workflows/ci.yml)
+[![CI](https://github.com/Pedro-HenriqueFF/zelda-wide/actions/workflows/ci.yml/badge.svg)](https://github.com/Pedro-HenriqueFF/zelda-wide/actions/workflows/ci.yml)
 
 A from-scratch NES emulator (6502, MMC1, PPU) with an SDL2 front-end, built to play *The Legend of Zelda* with a **widescreen overworld**,
 **fog of war** and a lot of extra polish, because owning the renderer makes it possible. The game itself runs unmodified underneath.
@@ -11,7 +11,7 @@ A from-scratch NES emulator (6502, MMC1, PPU) with an SDL2 front-end, built to p
 > **You must supply your own ROM.** No game data is included or needed to build. Target ROM: `Legend of Zelda, The (U) (PRG0) [!].nes`.
 > This is an unofficial fan project, not affiliated with or endorsed by Nintendo.
 
-Current version: **milestone 99**. Playable start to finish except for sound (not implemented).
+Current version: **milestone 100**. Playable start to finish except for sound (not implemented).
 
 ## What it does
 
@@ -81,7 +81,8 @@ cmake -B build && cmake --build build -j
 ctest --test-dir build --output-on-failure
 ```
 
-`tools/check.sh` is the fast development loop (incremental build, all tests, sanitizer mode with `--san`).
+On Windows `tools\win-test.ps1` runs them and names the crashing section if there is one. `tools/check.sh` (Linux/WSL) is the fast development loop
+(incremental build, all tests, sanitizer mode with `--san`); `tools/linux-update.sh` and `tools\win-update.ps1` update the folder from a new zip without rebuilding everything.
 
 ## Project layout
 
@@ -93,6 +94,12 @@ docs/       BUILDING.md, ARCHITECTURE.md
 ```
 
 A file-by-file map is in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). Contributions are welcome: see [CONTRIBUTING.md](CONTRIBUTING.md).
+
+## How this was made
+
+This project was written with **Claude** (Anthropic's AI assistant), in conversation, on the **free plan**, using mostly **Claude Sonnet 5.5** on High/Medium
+effort. The author directed the work, tested every change on the real game and reported what looked or behaved wrong; Claude wrote the code, the tests and the
+documentation. The automated tests in `tests/` check the behaviour, but expect rough edges.
 
 ## Acknowledgments
 

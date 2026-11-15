@@ -216,18 +216,22 @@ the ground of the neighbouring screens move in the margins of the widescreen vie
 
 - **How a shadow is made.** While the real game is in plain overworld play, each neighbour gets a copy of the game (its own RAM, cartridge RAM, CPU and
   a "lite" PPU that draws nothing). The stand-in Link is put at the edge facing the target screen and the game is put into its leave-the-room mode; the
-  game then scrolls, loads the screen and spawns its monsters by itself (a diagonal neighbour takes two such steps). After a short settling time the
-  shadow runs in step with the real game, on the thread pool. Its random numbers are reseeded so that it does not move like the real game.
+  game then scrolls, loads the screen and spawns its monsters by itself (a diagonal neighbour takes two such steps). The shadow is drawn from the moment
+  it arrives, so its monsters appear with the game's normal spawn smoke; it then runs in step with the real game, on the thread pool. Its random numbers are
+  reseeded so that it does not move like the real game.
+- **Shadows persist.** When Link walks to another screen, the shadows of screens that are still neighbours simply go on (nothing respawns); only the
+  missing neighbours get new shadows and the ones that are now two screens away are dropped. **The screen Link leaves** becomes a shadow too, from exactly
+  the state it was in (its monsters carry on), so when Link comes back they have been alive all along.
 - **The stand-in Link** takes no input and cannot die (his hearts are refilled), cannot take a cave or stairs, and is never drawn. Monster shots are
   deleted, so nothing flies in a shadow: the monsters roam but do not shoot.
 - **What is drawn.** The sprites of each shadow (monsters, fairies, items) under the game's picture of Link's screen and only on explored screens;
-  monsters near water reflect in it (the `End` switch applies). They are also drawn during the glide between screens (standing still), so the monsters
-  of the screen Link walks into do not vanish while the camera moves.
-- **Hand-off.** When Link walks into a screen with a ready shadow, the shadow's monsters take over from the fresh ones the game loads, so they carry on
+  monsters near water reflect in it (the `End` switch applies). During the glide between screens the shadows keep running and stay drawn, so the monsters
+  keep moving while the camera moves.
+- **Hand-off.** When Link walks into a screen with a shadow, the shadow's monsters take over from the fresh ones the game loads, so they carry on
   instead of popping: right after the game has made its own monsters (a couple of frames into its enter-room mode) the shadow's monsters (all per-monster
-  variables) are copied into the game. Until then the shadow's monsters are drawn over the game's picture. Nothing is copied when the real game's monsters
-  are of kinds the shadow does not have; then they appear as in the original.
+  variables) are copied into the game. The game does not draw its monsters while Link walks in, so until it does the shadow's monsters are drawn over
+  its picture: no blink. Nothing is copied when the real game's monsters are of kinds the shadow does not have; then they appear as in the original.
 - **Safety net.** A shadow whose game leaves plain play (for example by entering a cave) is dropped from the picture and started again after a pause, up to
-  three times. Shadows wait while the real game scrolls, is in a cave or in the inventory, and are dropped in dungeons.
+  three times. Shadows wait while the real game is in a cave or in the inventory, and are dropped in dungeons.
 - **Not done yet:** glow and sparkles of the neighbours at night, more shadow screens for the very wide zoom levels (two screens away).
 - **Debugging.** `Page Up` writes `shadow_debug.txt`: the state of each shadow and the objects in its slots.

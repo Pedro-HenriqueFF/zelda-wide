@@ -1,4 +1,5 @@
 // Section 32: the neighbouring screens running (shadow games) are drawn into the margins.
+#include <memory>
 #include "test_wide_common.h"
 #include "shadow.h"
 #include "zelda_ram.h"
@@ -9,7 +10,7 @@ using namespace zelda;
 void section32(Ctx& t) {
     SECTION_BINDINGS
     const int room = 0x23, east = 0x24;
-    Widescreen m; m.init(*nes, err); m.unfogAnim = false; m.cloudShadow = false; m.lighting = false; m.hudOverlay = false; m.caveBox = true; m.setWater(false);
+    auto m_h = std::make_unique<Widescreen>(); Widescreen& m = *m_h; m.init(*nes, err); m.unfogAnim = false; m.cloudShadow = false; m.lighting = false; m.hudOverlay = false; m.caveBox = true; m.setWater(false);
     for (int i = 0; i < OverworldMap::TILES; i++) nes->cart.cpuWrite(0x6530 + i, decoded[i]);
     nes->cart.cpuWrite(0x67F + room, 0); nes->cart.cpuWrite(0x6AFE + room, 0);
     setState(5, room); nes->ram[kMenuState] = 0; nes->ram[kCurLevel] = 0; nes->ram[kUndergroundExitType] = 0;
@@ -40,8 +41,6 @@ void section32(Ctx& t) {
     // not drawn: the screen Link is in, the stand-in Link (OAM 18/19), the status bar's icons, a disabled set, a screen that is not ready
     set.pool[1].adopt(*nes, room); monster(set.pool[1], 5, 100, 100); set.active = {&set.pool[1]};
     CHECK_EQ(differing(base, picture(&set)), (size_t)0);
-    set.armHandOff(); CHECK(differing(base, picture(&set)) > 100);                // (between the glide and the hand-off the screen Link entered shows its shadow's monsters over the game's picture)
-    set.handOffArmed = false; CHECK_EQ(differing(base, picture(&set)), (size_t)0);
     set.pool[0].adopt(*nes, east); monster(set.pool[0], zelda::kLinkOam0, 100, 100); set.active = {&set.pool[0]};
     CHECK_EQ(differing(base, picture(&set)), (size_t)0);
     set.pool[0].adopt(*nes, east); monster(set.pool[0], 6, 100, 20); set.active = {&set.pool[0]};
@@ -83,6 +82,16 @@ void section32(Ctx& t) {
         const std::vector<uint32_t> dry2 = picture(nullptr), wet2 = picture(&set);
         CHECK_EQ(differing(dry2, wet2), (size_t)128);                                // (reflections off)
         m.waterReflections = true;
+    }
+    {   // between the glide and the hand-off, and while Link walks into the screen (mode 4: the game draws no monsters then), the bridge shadow of that screen is drawn over the picture
+        setState(4, room); frames(m, 2, aspect);
+        set.pool[1].adopt(*nes, room); monster(set.pool[1], 5, 100, 100); set.active = {&set.pool[1]};
+        set.bridge = nullptr; const std::vector<uint32_t> enter = picture(&set);
+        set.bridge = &set.pool[1]; CHECK(differing(enter, picture(&set)) > 100);
+        set.bridge = nullptr; CHECK_EQ(differing(enter, picture(&set)), (size_t)0);
+        set.bridge = &set.pool[1]; setState(5, room); frames(m, 2, aspect);          // (in play the game's own picture shows its monsters: the bridge is not drawn)
+        const std::vector<uint32_t> play = picture(nullptr); CHECK_EQ(differing(play, picture(&set)), (size_t)0);
+        set.bridge = nullptr;
     }
     m.shadows = nullptr;
 }

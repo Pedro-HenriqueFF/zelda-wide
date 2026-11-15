@@ -1,6 +1,7 @@
 // Widescreen integration tests: the world view, camera, fog of war, zoom, the glide between screens, title/dungeon pictures.
 // Sections run in numeric order (see test_wide.cpp) on one shared Ctx: later sections rely on state (fog discovered,
 // palettes, RAM) left by earlier ones, so do not reorder them.
+#include <memory>
 #include <cstdio>
 #include "test_wide_common.h"
 #include "../src/widescreen_internal.h"
@@ -189,7 +190,7 @@ void section09(Ctx& t) {
     std::remove(path);
     ws.saveFogIfDirty(path);
     {
-        Widescreen probe; probe.init(*nes, err);
+        auto probe_h = std::make_unique<Widescreen>(); Widescreen& probe = *probe_h; probe.init(*nes, err);
         CHECK(!probe.loadFog(path));                         // nothing is written before the game itself saves
     }
     {   // malformed fog files are refused (no crash, nothing half-loaded): empty, wrong magic, cut short
@@ -197,7 +198,7 @@ void section09(Ctx& t) {
         const std::string good = "ZWF1" + std::string(3 * 24, '\x55');
         for (const std::string& content : {std::string(), std::string("XYZW") + good.substr(4), good.substr(0, 4), good.substr(0, 30), good.substr(0, good.size() - 1)}) {
             { std::ofstream o(bad, std::ios::binary | std::ios::trunc); o.write(content.data(), (std::streamsize)content.size()); }
-            Widescreen probe; probe.init(*nes, err);
+            auto probe_h = std::make_unique<Widescreen>(); Widescreen& probe = *probe_h; probe.init(*nes, err);
             CHECK(!probe.loadFog(bad));
         }
         std::remove(bad);
@@ -207,7 +208,7 @@ void section09(Ctx& t) {
     setState(5, 0x23); nes->ram[0x13] = 0; frames(ws, 2, aspect);
     ws.saveFogIfDirty(path);
     {
-        Widescreen ws2; ws2.init(*nes, err); ws2.unfogAnim = false; ws2.cloudShadow = false; ws2.lighting = false; ws2.viewHeight = 176; ws2.hudOverlay = false; ws2.caveBox = false;
+        auto ws2_h = std::make_unique<Widescreen>(); Widescreen& ws2 = *ws2_h; ws2.init(*nes, err); ws2.unfogAnim = false; ws2.cloudShadow = false; ws2.lighting = false; ws2.viewHeight = 176; ws2.hudOverlay = false; ws2.caveBox = false;
         CHECK(ws2.loadFog(path));
         frames(ws2, 2, aspect);                              // same name in RAM -> keeps discovered rooms
         CHECK_EQ(px(127, 100), Ppu::nesColor(0x21));         // room $22 still discovered
@@ -223,7 +224,7 @@ void section10(Ctx& t) {
     SECTION_BINDINGS
     // 10. Bigger view (default 448 world pixels): canvas = status bar + 448, wide windows get wider.
     {
-        Widescreen z; z.init(*nes, err); z.unfogAnim = false; z.cloudShadow = false; z.lighting = false; z.hudOverlay = false; z.caveBox = false;
+        auto z_h = std::make_unique<Widescreen>(); Widescreen& z = *z_h; z.init(*nes, err); z.unfogAnim = false; z.cloudShadow = false; z.lighting = false; z.hudOverlay = false; z.caveBox = false;
         CHECK_EQ(z.viewHeight, 448);
         setState(5, 0x23); frames(z, 2, 16.0 / 9.0);
         CHECK_EQ(c.h, 64 + 448);                             // 512
@@ -265,7 +266,7 @@ void section11(Ctx& t) {
     // 11. Gliding across a screen border: the emulator skipped the scroll and the game put Link 16 px forward
     //     (room $23 x=240 -> room $24 x=0). The compositor shows him walking those 16 px with the camera following.
     {
-        Widescreen g; g.init(*nes, err); g.unfogAnim = false; g.cloudShadow = false; g.lighting = false; g.viewHeight = 176; g.hudOverlay = false; g.caveBox = false;
+        auto g_h = std::make_unique<Widescreen>(); Widescreen& g = *g_h; g.init(*nes, err); g.unfogAnim = false; g.cloudShadow = false; g.lighting = false; g.viewHeight = 176; g.hudOverlay = false; g.caveBox = false;
         nes->ppu.palette[0x11] = 0x30;                       // sprite palette 0, colour 1 = white
         for (int i = 0; i < 64; i++) nes->ppu.oam[i * 4] = 0xFF;          // all sprites parked
         setState(5, 0x23); nes->ram[0x70] = 240; frames(g, 3, aspect);   // steady, Link at the right edge
@@ -300,7 +301,7 @@ void section11(Ctx& t) {
         CHECK_EQ(px(248 + 10, 67 + 5), 0xFF123456);
 
         // No glide when there is nothing to smooth, or when the camera hasn't been anywhere yet.
-        Widescreen g2; g2.init(*nes, err); g2.unfogAnim = false; g2.cloudShadow = false; g2.lighting = false; g2.viewHeight = 176; g2.hudOverlay = false; g2.caveBox = false;
+        auto g2_h = std::make_unique<Widescreen>(); Widescreen& g2 = *g2_h; g2.init(*nes, err); g2.unfogAnim = false; g2.cloudShadow = false; g2.lighting = false; g2.viewHeight = 176; g2.hudOverlay = false; g2.caveBox = false;
         g2.startGlide(*nes);
         CHECK(!g2.gliding());
         setState(5, 0x24); nes->ram[0x70] = 0; frames(g2, 3, aspect);
@@ -618,24 +619,24 @@ void section24(Ctx& t) {
     auto fresh = [&](Widescreen& w) { w.init(*nes, err); w.unfogAnim = false; w.cloudShadow = false; w.lighting = false; w.fog = false; w.viewHeight = 176; w.hudOverlay = false; w.caveBox = false; };
     auto diffs = [&](const std::vector<uint32_t>& a, const std::vector<uint32_t>& b) { int n = 0; for (size_t i = 0; i < a.size(); i++) n += a[i] != b[i]; return n; };
     std::vector<uint32_t> before, hidden, found, other;
-    { Widescreen w; fresh(w); snap(w, before); }
+    { auto w_h = std::make_unique<Widescreen>(); Widescreen& w = *w_h; fresh(w); snap(w, before); }
     nes->cart.cpuWrite(0x6AFE + 0x23, 0);                                             // secret of both quests
     nes->ram[0x67F + 0x23] &= 0x7F;                                                   // not found yet
     // (the squares use index $10, which is part of the primary table's signature: use index $18 instead, = $E6)
     const size_t heap0 = 5 * 16384 + (0x9BD8 - 0x8000);
     auto useSquare = [&](int idx) { nes->cart.patchPrg(heap0, 0x80 | idx); for (int i = 1; i < 11; i++) nes->cart.patchPrg(heap0 + i, (uint8_t)idx); };
     nes->cart.patchPrg(0x218, 0xE6); useSquare(0x18);
-    { Widescreen w; fresh(w); snap(w, hidden); }
+    { auto w_h = std::make_unique<Widescreen>(); Widescreen& w = *w_h; fresh(w); snap(w, hidden); }
     CHECK(diffs(before, hidden) > 40);                                               // (one crack per 16 rows, the rest is the new tile colour)
     // compare with the same tiles without the marker: the found state decodes differently, so use the other quest instead
     nes->cart.cpuWrite(0x6AFE + 0x23, 0x80);                                          // secret of the second quest only
     nes->ram[0x62D + nes->ram[0x16]] = 0;                                             // ... and this is the first quest
-    { Widescreen w; fresh(w); snap(w, other); }
+    { auto w_h = std::make_unique<Widescreen>(); Widescreen& w = *w_h; fresh(w); snap(w, other); }
     CHECK(diffs(hidden, other) > 0);                                                 // no crack here
     int dark = 0; for (size_t i = 0; i < hidden.size(); i++) if (hidden[i] != other[i] && (hidden[i] & 0xFF) < (other[i] & 0xFF)) dark++;
     CHECK_EQ(dark, diffs(hidden, other));                                            // and every difference is the (darker) crack
     nes->ram[0x62D + nes->ram[0x16]] = 1;                                             // second quest: the secret applies again
-    { Widescreen w; fresh(w); snap(w, other); }
+    { auto w_h = std::make_unique<Widescreen>(); Widescreen& w = *w_h; fresh(w); snap(w, other); }
     CHECK_EQ(diffs(hidden, other), 0);
     nes->cart.cpuWrite(0x6AFE + 0x23, 0);
     useSquare(0x10);                                                                  // back to the fake ROM's normal tiles
@@ -650,7 +651,7 @@ void section24(Ctx& t) {
         { OverworldMap m; std::string e; m.init(nes->cart.prgData(), e); uint8_t tt[OverworldMap::TILES]; m.decodeRoom(0, false, tt);
           for (int i = 0; i < OverworldMap::TILES; i++) nes->cart.cpuWrite(0x6530 + i, tt[i]); }
         nes->ram[0x67F + room] &= 0x7F; nes->cart.cpuWrite(0x6AFE + room, 0);
-        Widescreen w; fresh(w);
+        auto w_h = std::make_unique<Widescreen>(); Widescreen& w = *w_h; fresh(w);
         for (int k = 0; k < 4; k++) {
             syncFb(*nes);
             for (int y = 66; y < 78; y++) for (int x = armosX + 2; x < armosX + 12; x++) {
@@ -681,7 +682,7 @@ void section24(Ctx& t) {
         { OverworldMap m; std::string e; m.init(nes->cart.prgData(), e); uint8_t tt[OverworldMap::TILES]; m.decodeRoom(0, false, tt);
           for (int i = 0; i < OverworldMap::TILES; i++) nes->cart.cpuWrite(0x6530 + i, tt[i]); }
         nes->ram[0x67F + room] &= 0x7F; nes->cart.cpuWrite(0x6AFE + room, 0);
-        Widescreen w; w.init(*nes, err); w.cloudShadow = false; w.lighting = false; w.hudOverlay = false; w.caveBox = false; w.viewHeight = 176;      // fog on, animation on
+        auto w_h = std::make_unique<Widescreen>(); Widescreen& w = *w_h; w.init(*nes, err); w.cloudShadow = false; w.lighting = false; w.hudOverlay = false; w.caveBox = false; w.viewHeight = 176;      // fog on, animation on
         int blueFrames = 0, redFrames = 0, animFrames = 0;
         for (int k = 0; k < 45; k++) {
             syncFb(*nes);

@@ -1,4 +1,5 @@
 // Section 26: day/night clock, the lighting pass, light sources, dungeon torches.
+#include <memory>
 #include "test_wide_common.h"
 #include "lighting.h"
 #include "widescreen_internal.h"
@@ -64,7 +65,10 @@ void section26(Ctx& t) {
     std::memset(nes->ppu.sprOam, 0xFF, Ppu::SPR_W * Ppu::SPR_H);
     // 26b. Night on the overworld: dark away from Link, his surroundings stay lit, the status bar is untouched; daytime changes nothing.
     {
-        Widescreen day, off, night, dusk;
+        auto day_h = std::make_unique<Widescreen>(); Widescreen& day = *day_h;
+        auto off_h = std::make_unique<Widescreen>(); Widescreen& off = *off_h;
+        auto night_h = std::make_unique<Widescreen>(); Widescreen& night = *night_h;
+        auto dusk_h = std::make_unique<Widescreen>(); Widescreen& dusk = *dusk_h;
         fresh(day); fresh(off); fresh(night); fresh(dusk); off.lighting = false;
         day.dayClock.phase = 0.25; night.dayClock.phase = 0.75; dusk.dayClock.phase = 0.56;
         setState(5, 0x23); frames(off, 4, aspect);
@@ -87,7 +91,7 @@ void section26(Ctx& t) {
 
     // 26c. What glows. (Positions: ObjX + 8, ObjY - 64 + 8 in the room's world position.)
     {
-        Widescreen w; fresh(w);
+        auto w_h = std::make_unique<Widescreen>(); Widescreen& w = *w_h; fresh(w);
         auto clear = [&] { for (int s = 0; s < 0x14; s++) { nes->ram[kObjState + s] = 0; nes->ram[kObjType + s] = 0; } w.sparkles.clear(); };
         auto lights = [&](int room = 0x23, bool armos = false) { ViewSnapshot v; v.room = (uint8_t)room; w.gatherLights(*nes, v, 0, 0, 0, armos); return w.lightSources; };
         std::vector<uint8_t> savedTiles(704);                                                // (the screen's real tiles come back at the end)
@@ -193,7 +197,7 @@ void section26(Ctx& t) {
         CHECK(peak > 0.8f && nt.bolt < 0 && nt.lightning() == 0.0f);                         // a flash that ends
     }
     {   // Link's sight does not jump with coordinates that are not his overworld ones (cave, dungeon exit)
-        Widescreen w; fresh(w); w.dayClock.phase = 0.75;
+        auto w_h = std::make_unique<Widescreen>(); Widescreen& w = *w_h; fresh(w); w.dayClock.phase = 0.75;
         setState(5, 0x23); frames(w, 6, aspect);
         const float x0 = w.lightLinkX, y0 = w.lightLinkY;
         CHECK(x0 > 0 && y0 > 0);
@@ -206,7 +210,8 @@ void section26(Ctx& t) {
 
     // 26d. Dungeons: torches in the corners of a room that is not dark; unlit and dark at first, lit later; dark rooms are left to the game.
     {
-        Widescreen lit, off; fresh(lit); fresh(off); off.lighting = false;
+        auto lit_h = std::make_unique<Widescreen>(); Widescreen& lit = *lit_h;
+        auto off_h = std::make_unique<Widescreen>(); Widescreen& off = *off_h; fresh(lit); fresh(off); off.lighting = false;
         nes->cart.cpuWrite(0x6A7E + 0x23, 0);
         setState(5, 0x23, 1); frames(off, 40, aspect); const Canvas ref = c;
         setState(4, 0x23, 1); frames(lit, 8, aspect); const Canvas early = c;                // entering: the room dark, the torches there but unlit
@@ -287,11 +292,12 @@ void section26(Ctx& t) {
         gScrollY = 0;
         gScrollX = 0;
         nes->cart.cpuWrite(0x6A7E + 0x23, 0x80);                                             // a dark room: no torches, no dimming
-        Widescreen dk, dko; fresh(dk); fresh(dko); dko.lighting = false;
+        auto dk_h = std::make_unique<Widescreen>(); Widescreen& dk = *dk_h;
+        auto dko_h = std::make_unique<Widescreen>(); Widescreen& dko = *dko_h; fresh(dk); fresh(dko); dko.lighting = false;
         setState(5, 0x23, 1); frames(dko, 40, aspect); const Canvas dref = c;
         frames(dk, 40, aspect); CHECK(c.pixels == dref.pixels);
         nes->cart.cpuWrite(0x6A7E + 0x23, 0);
-        Widescreen sw; fresh(sw);                                                            // overworld again: nothing left over from the dungeon
+        auto sw_h = std::make_unique<Widescreen>(); Widescreen& sw = *sw_h; fresh(sw);                                                            // overworld again: nothing left over from the dungeon
         setState(5, 0x23); frames(sw, 3, aspect);
         CHECK(sw.dungeonDim == 0.0f && sw.dungeonLit == 0.0f);
     }
@@ -299,7 +305,7 @@ void section26(Ctx& t) {
     // 26d1c. The candle's light around Link stays while a dungeon room scrolls (the game hides Link and its objects then) and goes on with him: from where he left the room
     // towards where the next room's door puts him, as far as the slide has got.
     {
-        Widescreen fl; fresh(fl);
+        auto fl_h = std::make_unique<Widescreen>(); Widescreen& fl = *fl_h; fresh(fl);
         nes->cart.cpuWrite(0x6A7E + 0x23, 0);
         nes->ram[kInvCandle] = 2; nes->ram[kSelectedItem] = kItemSlotCandle;
         nes->ram[kObjX] = 120; nes->ram[kObjY] = (uint8_t)(HUD_H + 80);                                  // Link's centre (128, 88)
@@ -317,7 +323,7 @@ void section26(Ctx& t) {
 
     // 26d1. A fairy glowing in a dungeon room keeps its light while the room scrolls away: the glow moves with the room (the game hides the fairy itself).
     {
-        Widescreen fl; fresh(fl);
+        auto fl_h = std::make_unique<Widescreen>(); Widescreen& fl = *fl_h; fresh(fl);
         nes->cart.cpuWrite(0x6A7E + 0x23, 0);
         for (int s2 = 1; s2 <= 12; s2++) { nes->ram[kObjType + s2] = 0; nes->ram[kObjState + s2] = 0; }
         nes->ram[kObjType + 3] = kTypeItem; nes->ram[kObjState + 3] = kItemFairy; nes->ram[kObjX + 3] = 100; nes->ram[kObjY + 3] = 150;   // glow at (108, 94)
@@ -335,7 +341,7 @@ void section26(Ctx& t) {
 
     // 26d2b0. The food Link drops lies in slot $0F like the boomerang: its white trail is not made while the room scrolls (it hung around the frozen meat)
     {
-        Widescreen fl; fresh(fl);
+        auto fl_h = std::make_unique<Widescreen>(); Widescreen& fl = *fl_h; fresh(fl);
         nes->cart.cpuWrite(0x6A7E + 0x23, 0);
         for (int s2 = 1; s2 <= 12; s2++) { nes->ram[kObjType + s2] = 0; nes->ram[kObjState + s2] = 0; }
         nes->ram[kObjState + 0x0F] = 1; nes->ram[kObjX + 0x0F] = 100; nes->ram[kObjY + 0x0F] = 150;
@@ -350,7 +356,7 @@ void section26(Ctx& t) {
     // 26d2a. A rupee on the floor of a dungeon room: its glitter goes on around it while the room scrolls away (the glitter moves with the room), and no flash is
     // left at its old place when the next room arrives (the game still holds the old room's objects until it starts to play).
     {
-        Widescreen fl; fresh(fl);
+        auto fl_h = std::make_unique<Widescreen>(); Widescreen& fl = *fl_h; fresh(fl);
         nes->cart.cpuWrite(0x6A7E + 0x23, 0);
         for (int s2 = 1; s2 <= 12; s2++) { nes->ram[kObjType + s2] = 0; nes->ram[kObjState + s2] = 0; }
         nes->ram[kObjType + 3] = kTypeItem; nes->ram[kObjState + 3] = kItemRupee; nes->ram[kObjX + 3] = 100; nes->ram[kObjY + 3] = 150;
@@ -373,7 +379,7 @@ void section26(Ctx& t) {
     // 26d2b. Climbing out of a cellar (modes $A, $10 or 4 are all used for the exit in this code): the room's torches are not drawn over the cellar's picture while it
     // fades, and the picture is the cellar's own (with its light) until it is black.
     {
-        Widescreen cf; fresh(cf); std::memset(nes->ppu.sprCol, 0xFF, Ppu::SPR_W * Ppu::SPR_H);            // (no sprites left over from other sections)
+        auto cf_h = std::make_unique<Widescreen>(); Widescreen& cf = *cf_h; fresh(cf); std::memset(nes->ppu.sprCol, 0xFF, Ppu::SPR_W * Ppu::SPR_H);            // (no sprites left over from other sections)
         nes->cart.cpuWrite(0x6A7E + 0x23, 0);
         for (int s2 = 1; s2 <= 12; s2++) { nes->ram[kObjType + s2] = 0; nes->ram[kObjState + s2] = 0; }
         gScrollX = 0; setState(5, 0x23, 1); frames(cf, 40, aspect);
@@ -397,7 +403,7 @@ void section26(Ctx& t) {
 
     // 26d2c. Climbing out of a cellar: the game has moved Link already while the cellar's picture fades; the cellar's light stays around where he stood
     {
-        Widescreen lf; fresh(lf); std::memset(nes->ppu.sprCol, 0xFF, Ppu::SPR_W * Ppu::SPR_H);
+        auto lf_h = std::make_unique<Widescreen>(); Widescreen& lf = *lf_h; fresh(lf); std::memset(nes->ppu.sprCol, 0xFF, Ppu::SPR_W * Ppu::SPR_H);
         nes->cart.cpuWrite(0x6A7E + 0x23, 0);
         for (int s2 = 1; s2 <= 12; s2++) { nes->ram[kObjType + s2] = 0; nes->ram[kObjState + s2] = 0; }
         gScrollX = 0; setState(5, 0x23, 1); frames(lf, 40, aspect);
@@ -421,7 +427,7 @@ void section26(Ctx& t) {
 
     // 26d3. The torches follow the game's fade of the picture: on the stairs the flames dim with the palette instead of burning on a dark picture
     {
-        Widescreen tf; fresh(tf);
+        auto tf_h = std::make_unique<Widescreen>(); Widescreen& tf = *tf_h; fresh(tf);
         nes->cart.cpuWrite(0x6A7E + 0x23, 0);
         for (int s2 = 1; s2 <= 12; s2++) { nes->ram[kObjType + s2] = 0; nes->ram[kObjState + s2] = 0; }
         gScrollX = 0;
@@ -446,7 +452,7 @@ void section26(Ctx& t) {
 
     // 26d2. A cellar (mode 9) has no torches but a little light around Link; the death scene keeps the torches lit.
     {
-        Widescreen cl; fresh(cl);
+        auto cl_h = std::make_unique<Widescreen>(); Widescreen& cl = *cl_h; fresh(cl);
         nes->cart.cpuWrite(0x6A7E + 0x23, 0);
         setState(5, 0x23, 1); frames(cl, 60, aspect);
         CHECK(cl.dungeonLit > 0.99f);
@@ -466,7 +472,7 @@ void section26(Ctx& t) {
 
     // 26d3. Going down the stairs: the next room's id is already set while the picture shows this room, which must stay lit.
     {
-        Widescreen st; fresh(st);
+        auto st_h = std::make_unique<Widescreen>(); Widescreen& st = *st_h; fresh(st);
         nes->cart.cpuWrite(0x6A7E + 0x23, 0); nes->cart.cpuWrite(0x6A7E + 0x24, 0x80);          // (the room below is a dark one)
         setState(5, 0x23, 1); frames(st, 60, aspect);
         CHECK(st.dungeonLit > 0.99f);
@@ -477,7 +483,7 @@ void section26(Ctx& t) {
 
     // 26e. Caves are dim, with a circle of sight around Link and the flames inside lighting their surroundings.
     {
-        Widescreen cv; fresh(cv);
+        auto cv_h = std::make_unique<Widescreen>(); Widescreen& cv = *cv_h; fresh(cv);
         for (int s = 0; s < 0x14; s++) { nes->ram[kObjState + s] = 0; nes->ram[kObjType + s] = 0; }
         nes->ram[kObjX] = 0x78; nes->ram[kObjY] = 0xC0; nes->ram[kInvCandle] = 0;
         std::vector<uint32_t> img((size_t)Ppu::W * ROOM_H, 0xFFC0C0C0u);
@@ -494,7 +500,7 @@ void section26(Ctx& t) {
 
     // 26f. The candle's fire at a border: tracked beyond the game's 8-bit coordinates, the game's object kept on the screen.
     {
-        Widescreen w; fresh(w);
+        auto w_h = std::make_unique<Widescreen>(); Widescreen& w = *w_h; fresh(w);
         for (int s = 0; s < 0x14; s++) { nes->ram[kObjState + s] = 0; nes->ram[kObjType + s] = 0; }
         nes->ram[kObjState] = 1; nes->ram[kObjX] = 0x07; nes->ram[kObjY] = 0x90; nes->ram[kObjDir] = 2;            // Link at the left border facing left
         nes->ram[kObjState + kSlotBombA] = 0x21; nes->ram[kObjX + kSlotBombA] = 0xF7; nes->ram[kObjY + kSlotBombA] = 0x90;   // the game wrapped it to 247
@@ -526,7 +532,7 @@ void section26(Ctx& t) {
 
     // 26g. The candle is not usable within 2.5 tiles of the border Link faces.
     {
-        Widescreen w; fresh(w);
+        auto w_h = std::make_unique<Widescreen>(); Widescreen& w = *w_h; fresh(w);
         nes->ram[kGameMode] = 5; nes->ram[kCurLevel] = 0; nes->ram[kSelectedItem] = kItemSlotCandle; nes->ram[kInvCandle] = 1;
         auto pressed = [&](int x, int y, int dir) { nes->ram[kObjX] = (uint8_t)x; nes->ram[kObjY] = (uint8_t)y; nes->ram[kObjDir] = (uint8_t)dir; nes->pad1 = BTN_B | BTN_LEFT; w.prepareFrame(*nes); return (nes->pad1 & BTN_B) != 0; };
         CHECK(!pressed(0x07, 0x90, 2) && !pressed(0x1F, 0x90, 2));                           // left: the flame stops 32 px from Link, so he needs X >= 32
@@ -542,7 +548,7 @@ void section26(Ctx& t) {
 
     // 26h. A new start (continuing after death) puts Link's sight on him at once; the armos halo shows in daylight; sparkles are drawn.
     {
-        Widescreen w; fresh(w); w.dayClock.phase = 0.25;
+        auto w_h = std::make_unique<Widescreen>(); Widescreen& w = *w_h; fresh(w); w.dayClock.phase = 0.25;
         setState(5, 0x23); frames(w, 6, aspect);
         const float x0 = w.lightLinkX;
         nes->ram[kObjX] = 0xD0;                                                              // (Link far away: a new spawn place)
@@ -562,7 +568,7 @@ void section26(Ctx& t) {
 
     // 26i. Trails under the sprites, an arrow's head, hearts and rupees, the room item, the pond fairy's first frames, the candle.
     {
-        Widescreen w; fresh(w);
+        auto w_h = std::make_unique<Widescreen>(); Widescreen& w = *w_h; fresh(w);
         std::vector<uint8_t> savedTiles(704);
         for (int i = 0; i < 704; i++) { savedTiles[i] = nes->cart.cpuRead(0x6530 + i); nes->cart.cpuWrite(0x6530 + i, 0x24); }
         auto clear = [&] { for (int s = 0; s < 0x14; s++) { nes->ram[kObjState + s] = 0; nes->ram[kObjType + s] = 0; } w.sparkles.clear(); };
@@ -608,7 +614,7 @@ void section26(Ctx& t) {
             std::memset(nes->ppu.sprCol, 0xFF, sizeof nes->ppu.sprCol);
         }
         // the candle a night frame knows about
-        Widescreen nw; fresh(nw); nw.dayClock.phase = 0.75;
+        auto nw_h = std::make_unique<Widescreen>(); Widescreen& nw = *nw_h; fresh(nw); nw.dayClock.phase = 0.75;
         nes->ram[kSelectedItem] = kItemSlotCandle; nes->ram[kInvCandle] = 2;
         for (int i = 0; i < 704; i++) nes->cart.cpuWrite(0x6530 + i, savedTiles[i]);
         setState(5, 0x23); frames(nw, 3, aspect);
@@ -619,7 +625,7 @@ void section26(Ctx& t) {
 
     // 26j. Heart containers (room item, dropped, in a cave), the triforce shard while it is held up, the end of a level, far-away statues.
     {
-        Widescreen w; fresh(w);
+        auto w_h = std::make_unique<Widescreen>(); Widescreen& w = *w_h; fresh(w);
         std::vector<uint8_t> savedTiles(704);
         for (int i = 0; i < 704; i++) { savedTiles[i] = nes->cart.cpuRead(0x6530 + i); nes->cart.cpuWrite(0x6530 + i, 0x24); }
         auto clear = [&] { for (int s = 0; s < 0x14; s++) { nes->ram[kObjState + s] = 0; nes->ram[kObjType + s] = 0; } w.sparkles.clear(); w.lightSources.clear(); };
@@ -661,7 +667,7 @@ void section26(Ctx& t) {
         nes->ram[kObjState] = 0; w.sparkles.clear(); gather(40, 0x12); CHECK(allKind(2));
         clear(); nes->ram[kRoomItemId] = 0x3F; nes->cart.cpuWrite(0x6700 + nes->ram[kRoomId], 0);
         // the torches stay lit through the end-of-level animation
-        { Widescreen d; fresh(d); nes->cart.cpuWrite(0x6A7E + 0x23, 0);
+        { auto d_h = std::make_unique<Widescreen>(); Widescreen& d = *d_h; fresh(d); nes->cart.cpuWrite(0x6A7E + 0x23, 0);
           for (int i = 0; i < 704; i++) nes->cart.cpuWrite(0x6530 + i, savedTiles[i]);
           setState(5, 0x23, 1); frames(d, 60, aspect); setState(0x12, 0x23, 1); frames(d, 20, aspect);
           CHECK(d.dungeonLit > 0.9f && d.dungeonDim > 0.9f); }

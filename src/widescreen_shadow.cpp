@@ -11,7 +11,8 @@ void Widescreen::drawShadowSprites(Canvas& out, int camX, int camY, int topBand,
     if (!shadows || !shadows->enabled || !enabled) return;
     const FlashEffect noFlash;
     for (ShadowGame* g : shadows->games()) {
-        if (!g->ready() || (g->room() == curRoom) == !onlyCurrent) continue;
+        if (!g->visible()) continue;
+        if (onlyCurrent ? g != shadows->bridgeGame() : g->room() == curRoom) continue;
         if (fog && !discovered(slot, g->room())) continue;                       // (a screen under the fog shows nothing living)
         const int rx = (g->room() & 15) * ROOM_W - camX, ry = topBand + (g->room() >> 4) * ROOM_H - camY;
         if (rx + ROOM_W + 16 <= 0 || rx - 16 >= out.w || ry + ROOM_H + 16 <= topBand || ry - 16 >= out.h) continue;     // (not on the canvas)

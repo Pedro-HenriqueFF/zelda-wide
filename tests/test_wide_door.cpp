@@ -1,4 +1,5 @@
 // Section 29: Link in dungeon doorways (widescreen_door.cpp): behind the frame / the wall around a hole, in front of the passage, nothing for closed doors.
+#include <memory>
 #include "test_wide_common.h"
 #include "widescreen_internal.h"
 #include "zelda_ram.h"
@@ -12,7 +13,7 @@ void section29(Ctx& t) {
     SECTION_BINDINGS
     constexpr uint32_t kWallC = 0xFF806040, kFloorC = 0xFF30A030, kBlack = 0xFF000000;
     const uint32_t kLinkC = Ppu::nesColor(0x16);
-    Widescreen dw; dw.init(*nes, err); dw.unfogAnim = false; dw.cloudShadow = false; dw.lighting = false; dw.fog = false; dw.hudOverlay = false; dw.caveBox = false;
+    auto dw_h = std::make_unique<Widescreen>(); Widescreen& dw = *dw_h; dw.init(*nes, err); dw.unfogAnim = false; dw.cloudShadow = false; dw.lighting = false; dw.fog = false; dw.hudOverlay = false; dw.caveBox = false;
     dw.dayClock.frozen = true;
     nes->cart.cpuWrite(0x6A7E + 0x23, 0);
     std::vector<uint32_t> room((size_t)256 * 176);
@@ -129,7 +130,7 @@ void section29(Ctx& t) {
 
     // 29i. sprites past the room's top/bottom (fire, smoke) are drawn into the margin when the status bar is an overlay; Link and the status bar's sprites are not
     {
-        Widescreen dm; dm.init(*nes, err); dm.unfogAnim = false; dm.cloudShadow = false; dm.lighting = false; dm.fog = false; dm.caveBox = false; dm.dayClock.frozen = true;
+        auto dm_h = std::make_unique<Widescreen>(); Widescreen& dm = *dm_h; dm.init(*nes, err); dm.unfogAnim = false; dm.cloudShadow = false; dm.lighting = false; dm.fog = false; dm.caveBox = false; dm.dayClock.frozen = true;
         clearRoom();
         auto put = [&](int py, int px, uint8_t oamIdx) { nes->ppu.sprCol[(size_t)py * Ppu::SPR_W + px] = 0x27; nes->ppu.sprOam[(size_t)py * Ppu::SPR_W + px] = oamIdx; };
         for (int y = 0; y < Ppu::H; y++) for (int x = 0; x < Ppu::W; x++) nes->ppu.framebuffer[(size_t)y * Ppu::W + x] = y < 64 ? kBlack : room[(size_t)(y - 64) * 256 + x];
@@ -216,7 +217,7 @@ void section29(Ctx& t) {
     // recorded picture is the source), the room that scrolls in shows its reflection as soon as its water start is on screen (going up the game has not laid it out)
     {
         constexpr uint32_t kMoat = 0xFF2040C0;
-        Widescreen sw; sw.init(*nes, err); sw.unfogAnim = false; sw.cloudShadow = false; sw.lighting = false; sw.fog = false; sw.hudOverlay = false; sw.caveBox = false; sw.dayClock.frozen = true;
+        auto sw_h = std::make_unique<Widescreen>(); Widescreen& sw = *sw_h; sw.init(*nes, err); sw.unfogAnim = false; sw.cloudShadow = false; sw.lighting = false; sw.fog = false; sw.hudOverlay = false; sw.caveBox = false; sw.dayClock.frozen = true;
         auto setTile = [&](int col, int row, uint8_t id) { nes->cart.cpuWrite((uint16_t)(0x6530 + col * 22 + row), id); };
         auto tileAt = [&](int col, int row) { const bool fl = col >= 4 && col < 28 && row >= 4 && row < 18; const bool m = fl && !(col >= 14 && col < 18 && row < 7); return m ? 0xF4 : fl ? 0x24 : 0xE0; };
         bool poison = false;                                                                   // (the wall's colour changes while it scrolls: what its reflection shows must not)

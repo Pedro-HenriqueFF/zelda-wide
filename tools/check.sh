@@ -3,7 +3,7 @@
 #   - builds the library + the three test programs and runs them (fast -O2 build by default; --san or --zip = with AddressSanitizer/UBSan)
 #   - syntax-checks src/main.cpp against the SDL stub (main.cpp can't be built without SDL2)
 #   - incremental: only changed files are recompiled (objects live in /tmp/zw-build)
-#   - optionally zips the project:  tools/check.sh --zip 18 (--zip-only 18 = zip without checks, for doc-only changes)   ->  /mnt/user-data/outputs/zelda-wide-milestone18.zip
+#   - optionally zips the project:  tools/check.sh --zip 18 (--zip-only 18 = zip without checks, for doc-only changes)   ->  zelda-wide-milestone18.zip in $ZW_ZIP_DIR (default: /mnt/user-data/outputs if writable, else ./dist)
 # Output is deliberately short: one line per test program, plus only the FAIL lines and compiler errors/warnings.
 root="$(cd "$(dirname "$0")/.." && pwd)"
 # Two modes: FAST (default, -O2, no sanitizers, objects in /tmp/zw-fast: test_wide runs in ~20 s instead of ~100 s) for the edit-test loop, and
@@ -65,11 +65,13 @@ if [ "${1:-}" = "--zip" ] && [ -n "${2:-}" ]; then
   python3 - "$root" "$2" << 'PY'
 import sys, os, zipfile
 root, n = sys.argv[1], sys.argv[2]
-out = f'/mnt/user-data/outputs/zelda-wide-milestone{n}.zip'
-os.makedirs(os.path.dirname(out), exist_ok=True)
+# where the zip goes: $ZW_ZIP_DIR, else the sandbox's /mnt/user-data/outputs when it can be written, else <project>/dist
+d = os.environ.get('ZW_ZIP_DIR') or ('/mnt/user-data/outputs' if os.access('/mnt/user-data/outputs', os.W_OK) else os.path.join(root, 'dist'))
+out = os.path.join(d, f'zelda-wide-milestone{n}.zip')
+os.makedirs(d, exist_ok=True)
 with zipfile.ZipFile(out, 'w', zipfile.ZIP_DEFLATED) as z:
     for d, dirs, fs in os.walk(root):
-        dirs[:] = [x for x in dirs if x not in ('build', '.git')]
+        dirs[:] = [x for x in dirs if x not in ('build', '.git', 'dist')]
         for f in fs:
             if not f.endswith('.tmp'):
                 p = os.path.join(d, f); z.write(p, os.path.join('zelda-wide', os.path.relpath(p, root)))

@@ -1,4 +1,5 @@
 // Section 27: water reflections and waves.
+#include <memory>
 #include "test_wide_common.h"
 #include "widescreen_internal.h"
 #include "parallel.h"
@@ -20,7 +21,7 @@ void section27(Ctx& t) {
     constexpr int R = OverworldMap::TILE_ROWS;
     constexpr uint32_t kLand = 0xFF20A020, kSea = 0xFF2040C0, kRed = 0xFFE02020, kDot = 0xFFE08020, kBlack = 0xFF000000;
     CHECK(isWaterTile(0x95) && isWaterTile(0x89) && isWaterTile(0x98) && !isWaterTile(0x88) && !isWaterTile(0x99));
-    Widescreen w; w.init(*nes, err); w.unfogAnim = false; w.cloudShadow = false; w.lighting = false; w.fog = false;
+    auto w_h = std::make_unique<Widescreen>(); Widescreen& w = *w_h; w.init(*nes, err); w.unfogAnim = false; w.cloudShadow = false; w.lighting = false; w.fog = false;
     for (int id = 0; id < 128; id++) { w.roomTiles(*nes, id); std::memset(w.cache[id].tiles, 0x24, OverworldMap::TILES); }
     auto put = [&](int room, int c0, int c1, int r0, int r1, uint8_t id) { for (int c = c0; c <= c1; c++) for (int r = r0; r <= r1; r++) w.cache[room].tiles[c * R + r] = id; };
     put(0, 4, 27, 4, 21, 0x95); put(16, 4, 27, 0, 17, 0x95);        // a big lake across two screens (rooms 0 and 16)
@@ -291,7 +292,7 @@ void section27(Ctx& t) {
         CHECK(Rch(105, 34) > Rch(200, 34) + 20); CHECK_EQ(at(200, 100), ref[(size_t)100 * cv.w + 200]);   // (no waves or scenery in this pass)
     }
     {   // The water grid is built again when the game's screen data changes (another level's attributes in the PRG-RAM, a loaded save): it used to be built once.
-        Widescreen w3; w3.init(*nes, err); w3.fxNes = nes.get();
+        auto w3_h = std::make_unique<Widescreen>(); Widescreen& w3 = *w3_h; w3.init(*nes, err); w3.fxNes = nes.get();
         const uint8_t old = nes->cart.cpuRead(kAttrsD + 9);
         w3.ensureWaterWorld(); const uint64_t sig1 = w3.wwSig; w3.ensureWaterWorld(); CHECK_EQ(w3.wwSig, sig1);
         nes->cart.cpuWrite(kAttrsD + 9, (uint8_t)((old & 0x7F) == 5 ? 6 : 5));
@@ -299,7 +300,7 @@ void section27(Ctx& t) {
         nes->cart.cpuWrite(kAttrsD + 9, old);
     }
     {   // The water pass spreads its rows and columns over several threads: the picture must be the same as with one (walls, big water, waves)
-        Widescreen wt; wt.init(*nes, err); wt.unfogAnim = false; wt.cloudShadow = false; wt.lighting = false; wt.fog = false;
+        auto wt_h = std::make_unique<Widescreen>(); Widescreen& wt = *wt_h; wt.init(*nes, err); wt.unfogAnim = false; wt.cloudShadow = false; wt.lighting = false; wt.fog = false;
         for (int id = 0; id < 128; id++) { wt.roomTiles(*nes, id); std::memset(wt.cache[id].tiles, 0x24, OverworldMap::TILES); }
         for (int id = 0; id < 8; id++) for (int c = 0; c < 32; c++) {
             for (int r = 2; r < 4; r++) wt.cache[id].tiles[c * R + r] = 0xD8;                         // a mountain wall above the sea: it reflects
@@ -364,7 +365,7 @@ void section27(Ctx& t) {
         }
     }
     if (std::getenv("ZW_TIME")) {                                    // benchmark: water on a canvas as big as a zoomed-out window (2048 x 900), twice a frame
-        Widescreen wb; wb.init(*nes, err); wb.unfogAnim = false; wb.cloudShadow = false; wb.lighting = false; wb.fog = false;
+        auto wb_h = std::make_unique<Widescreen>(); Widescreen& wb = *wb_h; wb.init(*nes, err); wb.unfogAnim = false; wb.cloudShadow = false; wb.lighting = false; wb.fog = false;
         for (int id = 0; id < 128; id++) { wb.roomTiles(*nes, id); std::memset(wb.cache[id].tiles, 0x24, OverworldMap::TILES); }
         for (int id = 0; id < 8; id++) for (int c = 0; c < 32; c++) for (int r = 4; r < 22; r++) wb.cache[id].tiles[c * R + r] = 0x95;
         wb.fxNes = nes.get(); wb.fxRoom = 3; wb.fxSlot = 0; wb.fxOx = 768; wb.fxOy = 0; wb.setWater(true); wb.wwReady = false; wb.lightPpu = &nes->ppu;
@@ -382,7 +383,7 @@ void section27(Ctx& t) {
     }
     if (std::getenv("ZW_TIME")) {                                    // benchmark: a whole frame (all features on) at the default and at a zoomed-out size
         for (int vh : {448, 900}) {
-            Widescreen wf; wf.init(*nes, err); wf.unfogAnim = false; wf.viewHeight = vh;
+            auto wf_h = std::make_unique<Widescreen>(); Widescreen& wf = *wf_h; wf.init(*nes, err); wf.unfogAnim = false; wf.viewHeight = vh;
             setState(5, 0x23); frames(wf, 4, aspect);
             perf::enabled = true; for (double& d : perf::total) d = 0;
             const auto t0 = std::chrono::steady_clock::now(); frames(wf, 10, aspect);
@@ -412,7 +413,8 @@ void section27(Ctx& t) {
     }
     // 27y. The fog glow of the rooms is kept between frames: same picture as without the cache, and it follows a newly explored room.
     {
-        Widescreen a, b;
+        auto a_h = std::make_unique<Widescreen>(); Widescreen& a = *a_h;
+        auto b_h = std::make_unique<Widescreen>(); Widescreen& b = *b_h;
         for (Widescreen* z : {&a, &b}) { z->init(*nes, err); z->unfogAnim = false; z->cloudShadow = false; z->lighting = false; z->setWater(false); z->hudOverlay = false; z->caveBox = false; z->viewHeight = 440; }
         b.fogCache = false;
         const int slot = nes->ram[0x16] % 3;
@@ -442,7 +444,7 @@ void section27(Ctx& t) {
     }
     // 27v. Through the real render path: the overworld frames before a cave record what the backdrop needs, and in the cave the water behind the box moves.
     {
-        Widescreen m; m.init(*nes, err); m.unfogAnim = false; m.cloudShadow = false; m.lighting = false; m.hudOverlay = false; m.caveBox = true; m.setWater(true); m.fog = false;
+        auto m_h = std::make_unique<Widescreen>(); Widescreen& m = *m_h; m.init(*nes, err); m.unfogAnim = false; m.cloudShadow = false; m.lighting = false; m.hudOverlay = false; m.caveBox = true; m.setWater(true); m.fog = false;
         m.viewHeight = 440;
         setState(5, 0); frames(m, 8, aspect);
         const bool recorded = m.backdropWaterOk;
@@ -455,7 +457,7 @@ void section27(Ctx& t) {
     // 27v2. The game's own picture of the screen gets the water pass (waves and reflections) when ANY of the two switches is on: End (reflections off) must not stop the waves there.
     {
         auto recordedWith = [&](bool refl, bool waves) {
-            Widescreen m; m.init(*nes, err); m.unfogAnim = false; m.cloudShadow = false; m.lighting = false; m.hudOverlay = false; m.caveBox = true; m.fog = false; m.viewHeight = 440;
+            auto m_h = std::make_unique<Widescreen>(); Widescreen& m = *m_h; m.init(*nes, err); m.unfogAnim = false; m.cloudShadow = false; m.lighting = false; m.hudOverlay = false; m.caveBox = true; m.fog = false; m.viewHeight = 440;
             m.waterReflections = refl; m.waterWaves = waves;
             setState(5, 0); frames(m, 8, aspect);
             return m.backdropWaterOk;
@@ -495,7 +497,7 @@ void section27(Ctx& t) {
     // 27w. Water in a dungeon room: the moat tiles ($F4) reflect the back wall from its base, Link (and monsters, items) about their feet; no moat = untouched.
     {
         constexpr uint32_t kWallC = 0xFFD03020, kFloorC = 0xFF30A030, kMoat = 0xFF2040C0;
-        Widescreen dw; dw.init(*nes, err); dw.unfogAnim = false; dw.cloudShadow = false; dw.lighting = false; dw.fog = false; dw.hudOverlay = false; dw.caveBox = false;
+        auto dw_h = std::make_unique<Widescreen>(); Widescreen& dw = *dw_h; dw.init(*nes, err); dw.unfogAnim = false; dw.cloudShadow = false; dw.lighting = false; dw.fog = false; dw.hudOverlay = false; dw.caveBox = false;
         dw.dayClock.frozen = true;
         auto setTile = [&](int col, int row, uint8_t id) { nes->cart.cpuWrite((uint16_t)(0x6530 + col * 22 + row), id); };
         auto paintRoom = [&](bool moat) {

@@ -1,5 +1,6 @@
 // Effects added on top of the world view: cloud shadows (shapes, transitions, caves, glide), the death-scene fade, walkable sand for the
 // fog, and a randomized stress run over everything. Runs after section 24 on the same shared Ctx (see test_wide.cpp).
+#include <memory>
 #include <cstdio>
 #include <algorithm>
 #include "test_wide_common.h"
@@ -26,8 +27,8 @@ void section25(Ctx& t) {
         CHECK_EQ(b.strengthAt(c0.x + c0.shape[0].cx, c0.y + c0.shape[0].cy), 255);           // solid in the heart
         CHECK_EQ(b.strengthAt(c0.x + c0.shape[0].cx + CloudField::kWorldW, c0.y + c0.shape[0].cy), 255);   // wraps
 
-        Widescreen sh; sh.init(*nes, err); sh.unfogAnim = false; sh.viewHeight = 176; sh.hudOverlay = false; sh.caveBox = false; sh.fog = false;
-        Widescreen pl; pl.init(*nes, err); pl.unfogAnim = false; pl.cloudShadow = false; pl.lighting = false; pl.viewHeight = 176; pl.hudOverlay = false; pl.caveBox = false; pl.fog = false;
+        auto sh_h = std::make_unique<Widescreen>(); Widescreen& sh = *sh_h; sh.init(*nes, err); sh.unfogAnim = false; sh.viewHeight = 176; sh.hudOverlay = false; sh.caveBox = false; sh.fog = false;
+        auto pl_h = std::make_unique<Widescreen>(); Widescreen& pl = *pl_h; pl.init(*nes, err); pl.unfogAnim = false; pl.cloudShadow = false; pl.lighting = false; pl.viewHeight = 176; pl.hudOverlay = false; pl.caveBox = false; pl.fog = false;
         setState(5, 0x23); frames(sh, 2, aspect);                                             // (creates the clouds)
         for (int i = 0; i < CloudField::kClouds; i++) { sh.clouds.cloud(i).x = 10; sh.clouds.cloud(i).y = 10; }   // all far from the view ...
         auto& cl = sh.clouds.cloud(0);
@@ -54,7 +55,7 @@ void section25(Ctx& t) {
     // 25b. The death fade only touches the bottom half of the background palette: colours of the top half (a white gravestone) fade
     //      along with it, anything else stays as the game draws it.
     {
-        Widescreen d; d.init(*nes, err); d.unfogAnim = false; d.cloudShadow = false; d.lighting = false; d.viewHeight = 176; d.hudOverlay = false; d.caveBox = false; d.fog = false;
+        auto d_h = std::make_unique<Widescreen>(); Widescreen& d = *d_h; d.init(*nes, err); d.unfogAnim = false; d.cloudShadow = false; d.lighting = false; d.viewHeight = 176; d.hudOverlay = false; d.caveBox = false; d.fog = false;
         const uint32_t white = Ppu::nesColor(0x30);
         auto count = [&](uint32_t col) { int n = 0; for (int y = HUD_H; y < c.h; y++) for (int x = 0; x < c.w; x++) n += c.pixels[(size_t)y * c.w + x] == col; return n; };
         for (int i = 0; i < 8; i++) nes->ppu.palette[i] = (i & 3) ? 0x30 : 0x0F;               // top half: white
@@ -117,8 +118,8 @@ void section25(Ctx& t) {
     {
         struct St { int mode, sub, upd, level; const char* name; };
         const St states[] = {{7, 3, 1, 0, "scroll"}, {4, 0, 1, 0, "enter room"}, {3, 4, 1, 0, "curtain"}, {0x11, 8, 1, 0, "death fade"}, {0x10, 2, 1, 0, "stairs"}, {6, 0, 1, 0, "leave room"}};
-        Widescreen sh; sh.init(*nes, err); sh.unfogAnim = false; sh.viewHeight = 176; sh.hudOverlay = false; sh.caveBox = false; sh.fog = false;
-        Widescreen pl; pl.init(*nes, err); pl.unfogAnim = false; pl.cloudShadow = false; pl.lighting = false; pl.viewHeight = 176; pl.hudOverlay = false; pl.caveBox = false; pl.fog = false;
+        auto sh_h = std::make_unique<Widescreen>(); Widescreen& sh = *sh_h; sh.init(*nes, err); sh.unfogAnim = false; sh.viewHeight = 176; sh.hudOverlay = false; sh.caveBox = false; sh.fog = false;
+        auto pl_h = std::make_unique<Widescreen>(); Widescreen& pl = *pl_h; pl.init(*nes, err); pl.unfogAnim = false; pl.cloudShadow = false; pl.lighting = false; pl.viewHeight = 176; pl.hudOverlay = false; pl.caveBox = false; pl.fog = false;
         for (const St& st : states) {
             auto go = [&](Widescreen& w) { setState(5, 0x23); frames(w, 3, aspect); setState(st.mode, 0x23, st.level); nes->ram[0x13] = st.sub; nes->ram[0x11] = st.upd; frames(w, 3, aspect); };
             go(sh);
@@ -140,8 +141,8 @@ void section25(Ctx& t) {
 
     // 25e. In a cave the backdrop behind the box is shaded too, and the clouds keep moving over it.
     {
-        Widescreen sh; sh.init(*nes, err); sh.unfogAnim = false; sh.viewHeight = 176; sh.hudOverlay = false; sh.fog = false;
-        Widescreen pl; pl.init(*nes, err); pl.unfogAnim = false; pl.cloudShadow = false; pl.lighting = false; pl.viewHeight = 176; pl.hudOverlay = false; pl.fog = false;
+        auto sh_h = std::make_unique<Widescreen>(); Widescreen& sh = *sh_h; sh.init(*nes, err); sh.unfogAnim = false; sh.viewHeight = 176; sh.hudOverlay = false; sh.fog = false;
+        auto pl_h = std::make_unique<Widescreen>(); Widescreen& pl = *pl_h; pl.init(*nes, err); pl.unfogAnim = false; pl.cloudShadow = false; pl.lighting = false; pl.viewHeight = 176; pl.hudOverlay = false; pl.fog = false;
         auto go = [&](Widescreen& w) { setState(5, 0x23); frames(w, 4, aspect); setState(0xB, 0x23); nes->ram[0x13] = 7; frames(w, 3, aspect); };
         go(sh);
         for (int i = 0; i < CloudField::kClouds; i++) { sh.clouds.cloud(i).x = 10; sh.clouds.cloud(i).y = 10; sh.clouds.cloud(i).speed = 0; }
@@ -179,8 +180,8 @@ void section25(Ctx& t) {
 
     // 25g. The glide into the next screen (moving between overworld areas) keeps the clouds, too.
     {
-        Widescreen sh; sh.init(*nes, err); sh.unfogAnim = false; sh.viewHeight = 176; sh.hudOverlay = false; sh.caveBox = false; sh.fog = false;
-        Widescreen pl; pl.init(*nes, err); pl.unfogAnim = false; pl.cloudShadow = false; pl.lighting = false; pl.viewHeight = 176; pl.hudOverlay = false; pl.caveBox = false; pl.fog = false;
+        auto sh_h = std::make_unique<Widescreen>(); Widescreen& sh = *sh_h; sh.init(*nes, err); sh.unfogAnim = false; sh.viewHeight = 176; sh.hudOverlay = false; sh.caveBox = false; sh.fog = false;
+        auto pl_h = std::make_unique<Widescreen>(); Widescreen& pl = *pl_h; pl.init(*nes, err); pl.unfogAnim = false; pl.cloudShadow = false; pl.lighting = false; pl.viewHeight = 176; pl.hudOverlay = false; pl.caveBox = false; pl.fog = false;
         auto go = [&](Widescreen& w) { setState(5, 0x23); frames(w, 4, aspect); nes->ram[0x70] = 150; w.startGlide(*nes); };
         go(sh);
         CHECK(sh.gliding());
@@ -198,7 +199,7 @@ void section25(Ctx& t) {
     // 25h. Stress: random game states, rooms, palettes, window shapes and zoom levels with every feature on (the sanitizers
     //      catch out-of-range reads and writes); the canvas must always be consistent.
     {
-        Widescreen w; w.init(*nes, err);
+        auto w_h = std::make_unique<Widescreen>(); Widescreen& w = *w_h; w.init(*nes, err);
         uint32_t rs = std::getenv("ZW_SEED") ? (uint32_t)std::atoi(std::getenv("ZW_SEED")) : 12345;          // (ZW_SEED / ZW_ITER: other seeds and longer runs in the review)
         auto rnd = [&]() { rs ^= rs << 13; rs ^= rs >> 17; rs ^= rs << 5; return rs; };
         const double aspects[] = {0.4, 1.0, 1.333, 1.78, 2.4, 3.6, 6.0};
@@ -228,7 +229,7 @@ void section25(Ctx& t) {
     // 25i. Stress: dungeon transitions with frozen sprites, lights and water: play frames in a dungeon room (random moat tiles, random sprites incl. Link's, random objects),
     //      then a random transition (6, 7 with a random slide, stairs, cellar in / out) with the sprites gone and random picture brightness (the sanitizers watch).
     {
-        Widescreen w; w.init(*nes, err); w.unfogAnim = false; w.cloudShadow = false;
+        auto w_h = std::make_unique<Widescreen>(); Widescreen& w = *w_h; w.init(*nes, err); w.unfogAnim = false; w.cloudShadow = false;
         uint32_t rs = std::getenv("ZW_SEED") ? (uint32_t)std::atoi(std::getenv("ZW_SEED")) + 7 : 777;
         auto rnd = [&]() { rs ^= rs << 13; rs ^= rs >> 17; rs ^= rs << 5; return rs; };
         const double aspects[] = {0.6, 1.0, 1.78, 3.0};

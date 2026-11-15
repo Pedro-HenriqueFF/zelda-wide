@@ -31,7 +31,21 @@ cmake --build build -j
 On Windows 11 (WSLg) the window appears on your desktop. Audio/input latency is usually better when built natively on Windows.
 
 ## Tests (no ROM or SDL needed)
-`tools/check.sh` builds everything (a fast `-O2` build by default, about 20 s for `test_wide`; with `--san`, and always with `--zip N`, with AddressSanitizer/UBSan), runs `test_core` (CPU, MMC1, PPU), `test_world` (overworld
-decoder, camera) and `test_wide` (renderer, fog, HUD, caves, sprites; on a synthetic ROM with faked game RAM), syntax-checks
-`main.cpp` against a stub SDL and checks that CMake lists every source. It only recompiles what changed (a no-change run takes a few seconds). `tools/check.sh --zip N` also packages the project; `--zip-only N` packages without running the checks (for documentation-only changes).
-With CMake: `cmake --build build && ctest --test-dir build -C Release`.
+
+**Windows:** `powershell -ExecutionPolicy Bypass -File tools\win-test.ps1` runs `test_core`, `test_world` and `test_wide` from the CMake build and, if `test_wide`
+crashes, says which section does it. (`tools/check.sh` is a bash script: Linux/WSL only.) With CMake alone: `ctest --test-dir build -C Release --output-on-failure`.
+The test executables are linked with a 32 MB stack (Windows' default 1 MB is too small for the compositor tests).
+
+**Linux / WSL:** `tools/check.sh` builds everything (a fast `-O2` build by default, about 20 s for `test_wide`; with `--san`, and always with `--zip N`, with
+AddressSanitizer/UBSan), runs `test_core` (CPU, MMC1, PPU, shadow games), `test_world` (overworld decoder, camera) and `test_wide` (renderer, fog, HUD, caves,
+sprites; on a synthetic ROM with faked game RAM), syntax-checks `main.cpp` against a stub SDL and checks that CMake lists every source. It only recompiles what
+changed (a no-change run takes a few seconds). `tools/check.sh --zip N` also packages the project into `$ZW_ZIP_DIR` (default `./dist`); `--zip-only N` packages
+without running the checks (for documentation-only changes). With CMake: `cmake --build build && ctest --test-dir build --output-on-failure`.
+
+## Updating the project folder from a zip
+
+Unzipping over the folder gives every file a new date and makes the next build recompile everything. These scripts copy only the files that changed (and remove
+the ones the new version no longer has in `src`, `tests`, `tools`, `docs`):
+
+- Windows: `powershell -ExecutionPolicy Bypass -File tools\win-update.ps1 -Zip C:\path\to\zelda-wide-milestoneNN.zip`
+- Linux / WSL: `tools/linux-update.sh ~/Downloads/zelda-wide-milestoneNN.zip` (add `--build` to build and run the tests afterwards)

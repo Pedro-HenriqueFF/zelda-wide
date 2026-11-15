@@ -1,6 +1,7 @@
 // Widescreen integration tests: the HUD overlay (status bar pieces) and the minimap.
 // Sections run in numeric order (see test_wide.cpp) on one shared Ctx: later sections rely on state (fog discovered,
 // palettes, RAM) left by earlier ones, so do not reorder them.
+#include <memory>
 #include "test_wide_common.h"
 
 void section12(Ctx& t) {
@@ -8,7 +9,7 @@ void section12(Ctx& t) {
     // 12. The status bar as a transparent overlay (default): the world fills the whole canvas, the four pieces of the
     //     bar are separate overlay pictures placed in the corners.
     {
-        Widescreen h; h.init(*nes, err); h.unfogAnim = false; h.cloudShadow = false; h.lighting = false; h.viewHeight = 176;
+        auto h_h = std::make_unique<Widescreen>(); Widescreen& h = *h_h; h.init(*nes, err); h.unfogAnim = false; h.cloudShadow = false; h.lighting = false; h.viewHeight = 176;
         CHECK(h.hudOverlay);                                  // on by default
         // a status bar with a single white pixel at (180, 45) [life piece], everything else black
         for (int i = 0; i < Ppu::W * 64; i++) nes->ppu.framebuffer[i] = 0xFF000000;
@@ -81,7 +82,7 @@ void section13(Ctx& t) {
     // 13. Details of the overlay HUD: the original-style map has no panel above the map itself, the minimap styles, the
     //     bar being hidden while a game starts, staying during the death sequence, and the fog fading with the picture.
     {
-        Widescreen h; h.init(*nes, err); h.unfogAnim = false; h.cloudShadow = false; h.lighting = false; h.viewHeight = 176;
+        auto h_h = std::make_unique<Widescreen>(); Widescreen& h = *h_h; h.init(*nes, err); h.unfogAnim = false; h.cloudShadow = false; h.lighting = false; h.viewHeight = 176;
         for (int i = 0; i < Ppu::W * 64; i++) nes->ppu.framebuffer[i] = 0xFF000000;      // an all-black status bar
         setState(5, 0x22); nes->ram[0x70] = 120; frames(h, 2, aspect);              // see screen $22 first
         setState(5, 0x23); nes->ram[0x70] = 120;

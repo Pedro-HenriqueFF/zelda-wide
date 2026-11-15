@@ -34,3 +34,6 @@ shadow_test_dump.txt
 *.user
 *.swp
 .DS_Store
+
+# tools/check.sh --zip output
+dist/

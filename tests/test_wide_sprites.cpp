@@ -1,6 +1,7 @@
 // Widescreen integration tests: the bomb flash, sprites past the borders, the sword-beam splash, wrapped sprites, Link coming out of a cave.
 // Sections run in numeric order (see test_wide.cpp) on one shared Ctx: later sections rely on state (fog discovered,
 // palettes, RAM) left by earlier ones, so do not reorder them.
+#include <memory>
 #include <algorithm>
 #include "test_wide_common.h"
 
@@ -11,7 +12,7 @@ void section16(Ctx& t) {
     //     the top/right/bottom of the screen are completed in the surroundings; sprites of the scene don't end up in the
     //     status bar.
     {
-        Widescreen fx; fx.init(*nes, err); fx.unfogAnim = false; fx.cloudShadow = false; fx.lighting = false; fx.viewHeight = 448; fx.fog = false; fx.minimapStyle = 0;
+        auto fx_h = std::make_unique<Widescreen>(); Widescreen& fx = *fx_h; fx.init(*nes, err); fx.unfogAnim = false; fx.cloudShadow = false; fx.lighting = false; fx.viewHeight = 448; fx.fog = false; fx.minimapStyle = 0;
         nes->ppu.palette[5] = 0x2A; nes->ppu.palette[7] = 0x21; nes->ppu.palette[11] = 0x16; nes->ppu.palette[9] = 0x2A;
         nes->ppu.lineMask[100] = 0x1E;
         for (int i = 0; i < Ppu::W * 64; i++) nes->ppu.framebuffer[i] = 0xFF000000;
@@ -156,7 +157,7 @@ void section19(Ctx& t) {
         // ---- Item 2: coming out of a cave, Link's stale sprites (cave position) are not drawn.
         // Spawn point of room $23 here: room-local centre (8, 21): canvas (256, 88); room origin on the canvas = (248, 67).
         {
-            Widescreen w; w.init(*nes, err); w.unfogAnim = false; w.cloudShadow = false; w.lighting = false; w.viewHeight = 176;
+            auto w_h = std::make_unique<Widescreen>(); Widescreen& w = *w_h; w.init(*nes, err); w.unfogAnim = false; w.cloudShadow = false; w.lighting = false; w.viewHeight = 176;
             clearAll();
             setState(4, 0x23); nes->ram[0x5A] = 1; nes->ram[0x70] = 100; nes->ram[0x84] = 90;          // Link still at the cave spot
             setOam(18, 100, 89, 3, 0); setOam(19, 108, 89, 3, 0);                                       // his two sprites
@@ -185,7 +186,7 @@ void section19(Ctx& t) {
         // ---- Item 4: stabbing at the left border. The sword sprite (OAM X = $F8, i.e. -8) wraps to the right border in the
         // PPU; it is drawn where it belongs instead, in the screen to the left, and the wrapped copy is gone.
         {
-            Widescreen w; w.init(*nes, err); w.unfogAnim = false; w.cloudShadow = false; w.lighting = false; w.viewHeight = 176; w.fog = false;
+            auto w_h = std::make_unique<Widescreen>(); Widescreen& w = *w_h; w.init(*nes, err); w.unfogAnim = false; w.cloudShadow = false; w.lighting = false; w.viewHeight = 176; w.fog = false;
             clearAll();
             setState(5, 0x23); nes->ram[0x70] = 4; nes->ram[0x84] = 100; nes->ram[0xAC + 0x0D] = 1;   // Link at the left border, sword out
             setOam(20, 0xF8, 99, 0x30, 0);                                                              // the sword, wrapped
@@ -240,7 +241,7 @@ void section19(Ctx& t) {
         // The shot (slot $E, state $11 = spreading) is at X=0, Y=100; d = 12. The game drew only its right corners:
         // top-right (OAM X = 16, Y = 88, H flip) and bottom-right (16, 112, H+V flip), palette 1.
         {
-            Widescreen w; w.init(*nes, err); w.unfogAnim = false; w.cloudShadow = false; w.lighting = false; w.viewHeight = 176; w.fog = false;
+            auto w_h = std::make_unique<Widescreen>(); Widescreen& w = *w_h; w.init(*nes, err); w.unfogAnim = false; w.cloudShadow = false; w.lighting = false; w.viewHeight = 176; w.fog = false;
             clearAll();
             setState(5, 0x23); nes->ram[0x70] = 40; nes->ram[0x84] = 100;                               // Link elsewhere (camera: centre (48, 44), origin (208, 44))
             nes->ram[0xAC + 0x0E] = 0x11; nes->ram[0x70 + 0x0E] = 0; nes->ram[0x84 + 0x0E] = 100;
@@ -366,7 +367,7 @@ void section22(Ctx& t) {
         for (int a = 0x300; a < 0x320; a++) { nes->cart.ppuWrite(a, 0xFF); nes->cart.ppuWrite(a + 8, 0xFF); }
         nes->ppu.palette[0x13] = 0x25;
         for (int i = 0; i < Ppu::H; i++) nes->ppu.lineCtrl[i] = 0x20;
-        Widescreen w; w.init(*nes, err); w.unfogAnim = false; w.cloudShadow = false; w.lighting = false; w.viewHeight = 176; w.fog = false;
+        auto w_h = std::make_unique<Widescreen>(); Widescreen& w = *w_h; w.init(*nes, err); w.unfogAnim = false; w.cloudShadow = false; w.lighting = false; w.viewHeight = 176; w.fog = false;
         auto run = [&](int linkY, int oamY, bool linkInFront = false) {
             for (int i = 0; i < 64; i++) nes->ppu.oam[i * 4] = 0xFF;
             std::memset(nes->ppu.sprCol, 0xFF, Ppu::SPR_W * Ppu::SPR_H); std::memset(nes->ppu.sprOam, 0xFF, Ppu::SPR_W * Ppu::SPR_H);

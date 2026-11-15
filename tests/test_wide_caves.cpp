@@ -1,6 +1,7 @@
 // Widescreen integration tests: caves and shops (boxed and replacing), the inventory, the stairs into a dungeon, the cave backdrop.
 // Sections run in numeric order (see test_wide.cpp) on one shared Ctx: later sections rely on state (fog discovered,
 // palettes, RAM) left by earlier ones, so do not reorder them.
+#include <memory>
 #include "test_wide_common.h"
 
 void section06(Ctx& t) {
@@ -128,7 +129,7 @@ void section14(Ctx& t) {
     //     screen); once the cave's picture is there, a dimmed backdrop and the framed box appear together, with the
     //     status bar on top. On the way out the box goes with the cave and the overworld is simply back.
     {
-        Widescreen b; b.init(*nes, err); b.unfogAnim = false; b.cloudShadow = false; b.lighting = false; b.viewHeight = 176;
+        auto b_h = std::make_unique<Widescreen>(); Widescreen& b = *b_h; b.init(*nes, err); b.unfogAnim = false; b.cloudShadow = false; b.lighting = false; b.viewHeight = 176;
         CHECK(b.caveBox);
         nes->ppu.palette[5] = 0x2A; nes->ppu.palette[7] = 0x21; nes->ppu.palette[11] = 0x16;   // (earlier tests left it black)
         for (int i = 0; i < Ppu::W * 64; i++) nes->ppu.framebuffer[i] = 0xFF000000;
@@ -202,7 +203,7 @@ void section15(Ctx& t) {
     // 15. The overworld map stays while Link walks down the stairs into a dungeon (the game already says "dungeon", but the
     //     overworld is still on screen); in a dungeon the game's own map is used.
     {
-        Widescreen s; s.init(*nes, err); s.unfogAnim = false; s.cloudShadow = false; s.lighting = false; s.viewHeight = 176; s.caveBox = true;
+        auto s_h = std::make_unique<Widescreen>(); Widescreen& s = *s_h; s.init(*nes, err); s.unfogAnim = false; s.cloudShadow = false; s.lighting = false; s.viewHeight = 176; s.caveBox = true;
         setState(5, 0x23); frames(s, 3, aspect);
         for (int col = 0; col < 32; col++) for (int row = 0; row < 22; row++)
             nes->ppu.vramWrite(0x2000 + (8 + row) * 32 + col, decoded[col * 22 + row]);
@@ -224,7 +225,7 @@ void section17(Ctx& t) {
     // 17. The inventory box drops the unused black rows above the title (keeping 20 for the SAVE AND QUIT hint); the
     //     backdrop behind a cave's box doesn't contain Link (he went in).
     {
-        Widescreen m; m.init(*nes, err); m.unfogAnim = false; m.cloudShadow = false; m.lighting = false; m.viewHeight = 176;
+        auto m_h = std::make_unique<Widescreen>(); Widescreen& m = *m_h; m.init(*nes, err); m.unfogAnim = false; m.cloudShadow = false; m.lighting = false; m.viewHeight = 176;
         for (int i = 0; i < Ppu::W * Ppu::H; i++) nes->ppu.framebuffer[i] = 0xFF000000;
         for (int y = 30; y < 40; y++) for (int x = 70; x < 200; x++) nes->ppu.framebuffer[y * 256 + x] = 0xFFB53120;   // the title
         for (int y = 200; y < 232; y++) for (int x = 20; x < 100; x++) nes->ppu.framebuffer[y * 256 + x] = 0xFF666666; // the map at the bottom
@@ -236,7 +237,7 @@ void section17(Ctx& t) {
         CHECK_EQ(box.pixels[(4 + 19) * box.w + 4 + 100], 0xFF000000);
         nes->ram[0xE1] = 0;
 
-        Widescreen b; b.init(*nes, err); b.unfogAnim = false; b.cloudShadow = false; b.lighting = false; b.viewHeight = 176;
+        auto b_h = std::make_unique<Widescreen>(); Widescreen& b = *b_h; b.init(*nes, err); b.unfogAnim = false; b.cloudShadow = false; b.lighting = false; b.viewHeight = 176;
         nes->ppu.palette[5] = 0x2A; nes->ppu.palette[7] = 0x21; nes->ppu.palette[11] = 0x16;
         for (int i = Ppu::W * 64; i < Ppu::W * Ppu::H; i++) nes->ppu.framebuffer[i] = 0xFF123456;
         for (int col = 0; col < 32; col++) for (int row = 0; row < 22; row++)
@@ -286,7 +287,7 @@ void section18(Ctx& t) {
         };
 
         // The reference: a calm overworld frame, then the cave.
-        Widescreen cl; cl.init(*nes, err); cl.unfogAnim = false; cl.cloudShadow = false; cl.lighting = false; cl.viewHeight = 176;
+        auto cl_h = std::make_unique<Widescreen>(); Widescreen& cl = *cl_h; cl.init(*nes, err); cl.unfogAnim = false; cl.cloudShadow = false; cl.lighting = false; cl.viewHeight = 176;
         setState(5, 0x23); frames(cl, 3, aspect);
         const std::vector<uint32_t> calm18 = c.pixels;
         goInCave(cl);
@@ -301,7 +302,7 @@ void section18(Ctx& t) {
         g_link.on = true; g_link.x = 124; g_link.y = 141;                                   // Link
         nes->ppu.sprCol[105 * Ppu::SPR_W + 258] = 0x2A; nes->ppu.sprOam[105 * Ppu::SPR_W + 258] = 20;
         nes->ppu.sprCol[61 * Ppu::SPR_W + 100] = 0x16;  nes->ppu.sprOam[61 * Ppu::SPR_W + 100] = 20;
-        Widescreen b; b.init(*nes, err); b.unfogAnim = false; b.cloudShadow = false; b.lighting = false; b.viewHeight = 176;
+        auto b_h = std::make_unique<Widescreen>(); Widescreen& b = *b_h; b.init(*nes, err); b.unfogAnim = false; b.cloudShadow = false; b.lighting = false; b.viewHeight = 176;
         setState(5, 0x23); frames(b, 3, aspect);
         CHECK_EQ(px(128 + 60, 3 + 36), 0xFFAA5500);                              // on a normal frame they are all there...
         CHECK_EQ(px(128 + 200, 3 + 26), 0xFFE45C10);
@@ -319,7 +320,7 @@ void section18(Ctx& t) {
 
         // A bomb flash just before going in doesn't leave its gray circle in the backdrop either.
         overworldAgain();
-        Widescreen f; f.init(*nes, err); f.unfogAnim = false; f.cloudShadow = false; f.lighting = false; f.viewHeight = 176;
+        auto f_h = std::make_unique<Widescreen>(); Widescreen& f = *f_h; f.init(*nes, err); f.unfogAnim = false; f.cloudShadow = false; f.lighting = false; f.viewHeight = 176;
         setState(5, 0x23); frames(f, 3, aspect);
         nes->ram[0xAC + 3] = 0x13; nes->ram[0x70 + 3] = 200; nes->ram[0x84 + 3] = 141;
         nes->ppu.lineMask[100] = 0x1F; frames(f, 2, aspect);
@@ -330,7 +331,7 @@ void section18(Ctx& t) {
 
         // With the original status bar on top (HUD overlay off) the bar is part of the backdrop, sprites still aren't.
         overworldAgain();
-        Widescreen o; o.init(*nes, err); o.unfogAnim = false; o.cloudShadow = false; o.lighting = false; o.viewHeight = 176; o.hudOverlay = false;
+        auto o_h = std::make_unique<Widescreen>(); Widescreen& o = *o_h; o.init(*nes, err); o.unfogAnim = false; o.cloudShadow = false; o.lighting = false; o.viewHeight = 176; o.hudOverlay = false;
         setState(5, 0x23); frames(o, 3, aspect);
         CHECK_EQ(c.h, 240);
         CHECK_EQ(px(128 + 10, 5), 0xFF654321);

@@ -1,4 +1,5 @@
 // Section 28: Lost Woods / Lost Hills: never unfogged in the overworld, on the map only once solved, single screen behind a haze, mist when entering/leaving.
+#include <memory>
 #include "test_wide_common.h"
 #include "widescreen_internal.h"
 #include "zelda_ram.h"
@@ -19,7 +20,7 @@ void section28(Ctx& t) {
 
     // The Lost Woods: in from the east, the way out is the west.
     {
-        Widescreen m; fresh(m);
+        auto m_h = std::make_unique<Widescreen>(); Widescreen& m = *m_h; fresh(m);
         run(m, 0x62, 4);
         CHECK(!m.mazeShown && !m.mazeFading() && m.discovered(slot, 0x62));
         run(m, 0x61, 2);
@@ -52,7 +53,7 @@ void section28(Ctx& t) {
     }
     // The Lost Hills: in from the south, out to the north once solved.
     {
-        Widescreen m; fresh(m);
+        auto m_h = std::make_unique<Widescreen>(); Widescreen& m = *m_h; fresh(m);
         run(m, 0x2B, 4); run(m, 0x1B, 2); settle(m);
         CHECK(m.mazeShown && !m.mazeSeen(slot, 0x1B));
         run(m, 0x0B, 2); settle(m);
@@ -60,7 +61,7 @@ void section28(Ctx& t) {
     }
     // A repeat of the room is the game's own scroll (no mist, no skipping); only a scroll between two different screens is skipped.
     {
-        Widescreen m; fresh(m);
+        auto m_h = std::make_unique<Widescreen>(); Widescreen& m = *m_h; fresh(m);
         run(m, 0x61, 3); settle(m);
         nes->ram[kCurLevel] = 0; nes->ram[kRoomId] = 0x61;
         CHECK(m.keepScroll(*nes));
@@ -75,7 +76,7 @@ void section28(Ctx& t) {
 
     // No proximity: the mist starts when the screen changes (Link touched the border), not before; then the game waits until the mist is gone.
     {
-        Widescreen m; fresh(m);
+        auto m_h = std::make_unique<Widescreen>(); Widescreen& m = *m_h; fresh(m);
         run(m, 0x62, 4);
         nes->ram[kCurLevel] = 0; nes->ram[kGameMode] = 5; nes->ram[kObjDir] = 2; nes->ram[kObjY] = 0x8D; nes->ram[kObjX] = 0x04;   // at the border of the Woods, facing it
         frames(m, 5, aspect);
@@ -87,7 +88,7 @@ void section28(Ctx& t) {
     }
     // Link's sight goes with his sprite while the maze scrolls into itself.
     {
-        Widescreen m; fresh(m); m.lighting = true;
+        auto m_h = std::make_unique<Widescreen>(); Widescreen& m = *m_h; fresh(m); m.lighting = true;
         run(m, 0x61, 3); settle(m);
         setState(7, 0x61);
         nes->ppu.oam[kLinkOam0 * 4 + 3] = 100; nes->ppu.oam[kLinkOam0 * 4] = 120;

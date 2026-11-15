@@ -1,4 +1,5 @@
 // Section 30: stairs on the ground: Link comes out on the square he went in by, and cannot go straight back in until he has left it.
+#include <memory>
 #include "test_wide_common.h"
 #include "widescreen_internal.h"
 #include "zelda_ram.h"
@@ -19,7 +20,7 @@ void section30(Ctx& t) {
     setState(5, room); nes->ram[kUndergroundExitType] = 0;
 
     {   // walking onto stairs at (x $70, y $9D) -> mode $10; out again: the attributes lent for the game's layout, then given back
-        Widescreen m; fresh(m);
+        auto m_h = std::make_unique<Widescreen>(); Widescreen& m = *m_h; fresh(m);
         go(m, kModePlay, 0x70, 0x9D);
         CHECK(!m.stairValid);
         go(m, kModeStairs, 0x70, 0x9D);
@@ -45,7 +46,7 @@ void section30(Ctx& t) {
         CHECK_EQ((int)nes->ram[kUndergroundExitType], 0);                                    // the guard is over: stepping on the stairs works again
     }
     {   // a cave entrance ($24) keeps the game's walk-out; so do the cellar, an unaligned spot and the file select
-        Widescreen m; fresh(m);
+        auto m_h = std::make_unique<Widescreen>(); Widescreen& m = *m_h; fresh(m);
         go(m, kModePlay, 0x70, 0x9D); go(m, kModeStairs, 0x70, 0x9D);
         nes->ram[kUndergroundEntranceTile] = 0x24; nes->ram[kUndergroundExitType] = 1;
         int sx, sy;
@@ -55,14 +56,14 @@ void section30(Ctx& t) {
         CHECK(!m.stairsExitSpot(*nes, room, sx, sy)); nes->ram[kCurLevel] = 0;
         CHECK(m.stairsExitSpot(*nes, room, sx, sy));
         nes->ram[kGameMode] = kModeFileSelect; step(m); CHECK(!m.stairValid && !m.stairsExitSpot(*nes, room, sx, sy));
-        Widescreen u; fresh(u);
+        auto u_h = std::make_unique<Widescreen>(); Widescreen& u = *u_h; fresh(u);
         go(u, kModePlay, 0x74, 0x9D); go(u, kModeStairs, 0x74, 0x9D); CHECK(!u.stairValid);        // not a square position
-        Widescreen v; fresh(v);
+        auto v_h = std::make_unique<Widescreen>(); Widescreen& v = *v_h; fresh(v);
         nes->ram[kCurLevel] = 2; go(v, kModePlay, 0x70, 0x9D); go(v, kModeStairs, 0x70, 0x9D); CHECK(!v.stairValid);   // (inside a dungeon: the game's own cellar stairs)
         nes->ram[kCurLevel] = 0;
     }
     {   // the camera while he comes out stands where he will be
-        Widescreen m; fresh(m);
+        auto m_h = std::make_unique<Widescreen>(); Widescreen& m = *m_h; fresh(m);
         go(m, kModePlay, 0x70, 0x9D); go(m, kModeStairs, 0x70, 0x9D);
         nes->ram[kUndergroundEntranceTile] = 0x70; nes->ram[kUndergroundExitType] = 1;
         setState(kModeEnter, room); nes->ram[kUndergroundExitType] = 1; nes->ram[kObjX] = 0x20; nes->ram[kObjY] = 0x5D;

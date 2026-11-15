@@ -30,6 +30,7 @@ public:
     void stepFrame();                             // one frame of the shadow (spin-up, keeping the stand-in Link neutral)
     State state() const { return st; }
     bool ready() const { return st == State::Ready; }
+    bool visible() const { return st == State::Settling || st == State::Ready; }   // (drawn: from the moment it has arrived on its screen, so the monsters' spawn smoke is seen)
     int  room() const { return target; }          // the screen this shadow lives on
     int  frames() const { return frameCount; }
     Nes& nes() { return *game; }
@@ -40,7 +41,10 @@ public:
     void reset() { st = State::Idle; target = -1; }
     // Hand-off: Link has walked into this shadow's screen and the real game has just loaded it with fresh monsters: the shadow's monsters (slots 1-12 and their variables)
     // replace them, so what was seen in the margin goes on instead of popping. Only when the real game's monsters are kinds the shadow has too. False: nothing copied.
-    bool handOffTo(Nes& real) const;
+    enum class HandOff { Done, Wait, No };        // Done: copied; Wait: the real game has not made its monsters yet; No: nothing to take over (other kinds, not on this screen)
+    HandOff handOffTo(Nes& real) const;
+    // The screen Link is leaving (the game has just entered its leave-the-room mode 6, the monsters are as they were): a shadow that carries on from exactly that state.
+    bool captureFrom(const Nes& real, uint32_t seed);
     void adopt(const Nes& src, int room);         // a ready shadow that is a plain copy of `src` standing on `room` (tests of the drawing)
 
 private:
@@ -55,29 +59,38 @@ private:
     void placeLinkNeutral();
 };
 
-// The up to 8 shadows around the real game's room.
+// The shadows around the real game's room (up to 8 neighbours; the screen Link has just left is one of them).
 class ShadowSet {
 public:
     static constexpr int kSpinStepsPerFrame = 3;  // a shadow that is still spinning up runs this many frames per real frame (it appears sooner)
+    static constexpr int kBridgeHold = 3;         // updates the entered screen's shadow stays after the hand-off (the picture is one frame behind the game)
     bool enabled = false;
-    // Called once per real frame after it ran. Starts the shadows when the real game is in plain overworld play in a room they were not made for;
-    // steps them all (in parallel); discards them when the real game goes into a dungeon, stays paused in another mode, or changes room.
+    // Called once per real frame after it ran. Keeps the shadows going: new neighbours are made when the real game is in plain overworld play in a new room
+    // (shadows that are still neighbours go on as they are, the others are dropped), the screen Link is leaving is captured as a shadow, the hand-off after a
+    // scroll is carried out; all shadows are stepped (in parallel). Dropped in dungeons.
     void update(Nes& real);
+    void animate();                               // one frame for every shadow while the real game is paused (the glide between screens): the monsters keep moving
     void clear();
     const std::vector<ShadowGame*>& games() const { return active; }
     int baseRoom() const { return base; }
     // The scroll is over and the game is about to load the screen (mode 4 clears its object RAM and makes the screen's monsters a few frames later):
-    // armHandOff() makes update() hand the monsters over as soon as the game has made them (or at the latest in mode 5).
-    void armHandOff() { handOffArmed = true; entryFrames = 0; }
-    bool handOffPending() const { return handOffArmed; }   // (the shadow of the screen Link entered keeps being drawn until then)
-    bool handOff(Nes& real);                      // the real game has just loaded a screen with a ready shadow: that shadow's monsters take over (see ShadowGame::handOffTo)
+    // update() hands the monsters of the shadow of that screen over as soon as the game has made its own (or at the latest in mode 5). Until the picture shows
+    // the real monsters again the shadow (the `bridge`) is drawn over it: the game does not draw its monsters while Link walks in (mode 4).
+    void armHandOff(const Nes& real);
+    bool handOffPending() const { return handOffArmed; }
+    const ShadowGame* bridgeGame() const { return bridge; }
+    ShadowGame::HandOff tryHandOff(Nes& real);
+    bool handOff(Nes& real) { return tryHandOff(real) == ShadowGame::HandOff::Done; }
     bool dump(const char* path) const;            // shadow_debug.txt: per shadow its state and the monsters/items in its object slots
     std::string summary() const;                  // one line for --trace
-    ShadowGame pool[8];
+    ShadowGame pool[12];
     std::vector<ShadowGame*> active;
     int base = -1;
-    bool handOffArmed = false;
-    int entryFrames = 0;
+    bool handOffArmed = false, departed = false;
+    int entryFrames = 0, bridgeHold = 0;
+    ShadowGame* bridge = nullptr;
 private:
-    void startAll(const Nes& real);
+    void reconcile(Nes& real);
+    void stepAll();
+    ShadowGame* alloc();
 };
