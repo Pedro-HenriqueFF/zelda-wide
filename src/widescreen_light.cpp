@@ -78,6 +78,20 @@ void drawTorch(Canvas& c, int cx, int cy, int corner, float lit, float shade, un
 }
 }  // namespace
 
+// The glow and glitter of an item lying on the ground (id `st` = ObjState of its slot `s`) at light-space (x, y); `sparkle` = glitter too.
+void Widescreen::itemGlow(int st, float x, float y, int s, bool sparkle) {
+    const unsigned t = dayClock.tick;
+    auto add = [&](float px, float py, float rad, float pw, int r, int g, int b) { lightSources.push_back({px, py, rad, pw, 0.0f, (uint8_t)r, (uint8_t)g, (uint8_t)b}); };
+    auto glitter = [&](int kind) { if (sparkle) spawnSparkles(x, y, kind); };
+    if (st == kItemFairy) { add(x, y, 40, 0.5f, 255, 190, 230); glitter(0); }                          // a fairy dropped by a monster
+    else if (st == kItemTriforce) { add(x, y, 44, 0.6f, 255, 215, 90); glitter(2); }                    // a shard of the triforce: gold glitter
+    else if (st == kItemHeartContainer) { add(x, y, 32, 0.4f, 255, 90, 100); glitter(3); }
+    else if (st == kItemHeart) { add(x, y, 20, 0.28f, 255, 90, 100); glitter(3); }                      // a heart: red glitter
+    else if (st == kItemRupee) { add(x, y, 20, 0.28f, 255, 190, 60); glitter(4); }                      // a rupee: amber
+    else if (st == kItemRupee5) { add(x, y, 20, 0.28f, 90, 150, 255); glitter(5); }                     // five rupees: blue
+    else if (st) add(x, y, 22, 0.55f * (0.8f + 0.2f * std::sin(t * 0.15f + s)), 255, 235, 170);       // a sparkle on dropped items
+}
+
 void Widescreen::gatherLights(Nes& nes, const ViewSnapshot& v, int ox, int oy, int slot, bool overworld, bool objects) {
     lightSources.clear();
     sparkOx = ox; sparkOy = oy; roomAge++; if (objects) roomPlayAge++;
@@ -125,13 +139,7 @@ void Widescreen::gatherLights(Nes& nes, const ViewSnapshot& v, int ox, int oy, i
         if (ty == kTypeFireballA || ty == kTypeFireballB) add(x, y, 44, 0.95f * lighting::flicker(t, s), 255, 140, 50);   // Zora and other fireballs
         else if (ty == kTypeMonsterSwordShot) add(x, y, 40, 0.8f, 190, 225, 255);
         else if (ty == kTypeMagicA || ty == kTypeMagicB) add(x, y, 44, 0.9f, 150, 150, 255);
-        else if (ty == kTypeItem && st == kItemFairy) { add(x, y, 40, 0.5f, 255, 190, 230); spawnSparkles(x, y, 0); }     // a fairy dropped by a monster
-        else if (ty == kTypeItem && st == kItemTriforce) { add(x, y, 44, 0.6f, 255, 215, 90); spawnSparkles(x, y, 2); }    // a shard of the triforce: gold glitter
-        else if (ty == kTypeItem && st == kItemHeartContainer) { add(x, y, 32, 0.4f, 255, 90, 100); spawnSparkles(x, y, 3); }
-        else if (ty == kTypeItem && st == kItemHeart) { add(x, y, 20, 0.28f, 255, 90, 100); spawnSparkles(x, y, 3); }          // a heart: red glitter
-        else if (ty == kTypeItem && st == kItemRupee) { add(x, y, 20, 0.28f, 255, 190, 60); spawnSparkles(x, y, 4); }          // a rupee: amber
-        else if (ty == kTypeItem && st == kItemRupee5) { add(x, y, 20, 0.28f, 90, 150, 255); spawnSparkles(x, y, 5); }         // five rupees: blue
-        else if (ty == kTypeItem) add(x, y, 22, 0.55f * (0.8f + 0.2f * std::sin(t * 0.15f + s)), 255, 235, 170);           // a sparkle on dropped items
+        else if (ty == kTypeItem) itemGlow(st, x, y, s, true);
     }
     // A room item lies in slot $13 until it is taken (ObjState $FF); then Link lifts it for $80 frames: the game puts it 16 px above him in
     // slot $13 again (ItemTypeToLift != 0) and the room item's own flag is already set.

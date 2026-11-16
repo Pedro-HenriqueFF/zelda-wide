@@ -127,8 +127,11 @@ void Widescreen::renderCore(Nes& nes, double windowAspect, Canvas& out) {
         if (leavingCave && visible && overworldOnScreen) {
             caveSession = false;                               // the overworld is back: normal frames from here
         } else {
-            if (!outIsBackdrop || cloudShadow || waterOn()) { out = backdrop; outIsBackdrop = true; redoBackdropWater(out); }
+            const bool shadowsLive = enabled && shadows && shadows->enabled && !shadows->games().empty();      // (the overworld goes on behind the cave: the monsters of every screen keep moving)
+            if (!outIsBackdrop || cloudShadow || waterOn() || shadowsLive) { out = backdrop; outIsBackdrop = true; redoBackdropWater(out); }
+            if (shadowsLive) drawShadowSprites(out, backdropCamX, backdropCamY, backdropTop, -1, slot);
             lightSources.clear(); lightLinkX = backdropLinkX; lightLinkY = backdropLinkY;
+            if (lighting && shadowsLive) gatherShadowLights(-1, slot, false);
             if (lighting && lightRoom >= 0) gatherStaticLights(nes, lightRoom, slot, false, (lightRoom & 15) * ROOM_W, (lightRoom >> 4) * ROOM_H);   // (the statues keep glowing behind the cave)
             waterDone = true;                                  // (the water is baked into the backdrop)
             applyClouds(out, backdropTop, backdropCamX, backdropCamY, backdropCamX + out.w / 2, backdropCamY + (out.h - backdropTop) / 2);
@@ -275,6 +278,9 @@ void Widescreen::renderCore(Nes& nes, double windowAspect, Canvas& out) {
     if (space != lightSpace) { sparkles.clear(); lightSpace = space; }
     candleHeld = nes.ram[kSelectedItem] == kItemSlotCandle ? nes.ram[kInvCandle] : 0;
     if (kind == Kind::Overworld && view.level == 0) lastOverRoom = view.room;
+    // The overworld picture is on screen (play, the walk into stairs / a cave / a dungeon, the way back out of a cave): the neighbouring screens' shadows are drawn around it.
+    const bool shadowScene = layout == Layout::World && ((kind == Kind::Overworld && view.level == 0) || (kind == Kind::Transition && (view.mode == kModeStairs || (view.mode == kModeLeaveCave && view.level == 0))));
+    const int shadowCur = view.mode == kModeStairs && shadows ? shadows->baseRoom() : view.room;      // (the stairs' RoomId is already the cellar's)
     if (lighting && (layout != Layout::Plain || mazeShown) && (kind == Kind::Overworld || kind == Kind::OverworldOdd))   // what glows (moving things only while the game plays; statues always)
         gatherLights(nes, view, (view.room & 15) * ROOM_W, (view.room >> 4) * ROOM_H, slot, true, view.mode == kModePlay);
     else if (lighting && layout != Layout::Plain && (kind == Kind::Transition || kind == Kind::OverworldIntro || kind == Kind::Cave)) {   // (also while a dungeon is entered: the overworld is still on screen)
@@ -283,6 +289,7 @@ void Widescreen::renderCore(Nes& nes, double windowAspect, Canvas& out) {
         gatherStaticLights(nes, sr, slot, false, (sr & 15) * ROOM_W, (sr >> 4) * ROOM_H);
     }
     else lightSources.clear();
+    if (lighting && shadowScene) gatherShadowLights(shadowCur, slot, true);
     const bool dungeonView = view.level != 0 && layout == Layout::Plain && (kind == Kind::Interior || kind == Kind::Transition);   // (rooms sliding, stairs, cellars, the death scene)
     if (!dungeonView) { dungeonDim = dungeonLit = 0; wasScroll = false; frozenOn = false; staleObjects = false; }
     if (!(kind == Kind::Cave || (kind == Kind::Interior && view.level == 0) || dungeonView) && !caveSession) caveDim = 0;
@@ -409,7 +416,7 @@ void Widescreen::renderCore(Nes& nes, double windowAspect, Canvas& out) {
     } else {
         // The game's own picture of the current screen (with Link, enemies, effects) goes on top, untouched.
         perf::Scope perfRoom(perf::kRoom);                       // (the game's own picture: sprites, effects, the water of Link and the monsters)
-        if (layout == Layout::World && kind == Kind::Overworld && view.level == 0) drawShadowSprites(out, camX, camY, topBand, view.room, view.slot);   // (under the game's own room: what spills over the border is covered)
+        if (shadowScene) drawShadowSprites(out, camX, camY, topBand, shadowCur, view.slot);   // (under the game's own room: what spills over the border is covered)
         planSpriteFixes(nes, view, hideLinkSprites);
         blitRoomId = view.room;
         blitSecrets = kind == Kind::Overworld && view.level == 0 ? roomSecrets(nes, view.room) : nullptr;
@@ -417,7 +424,7 @@ void Widescreen::renderCore(Nes& nes, double windowAspect, Canvas& out) {
         if (topBand == 0) drawOverhang(nes, out, roomX, roomY, topBand, flash, ox, oy);
         drawTrueSprites(nes, out, roomX, roomY, topBand, flash, ox, oy);
         drawSplashes(nes, out, roomX, roomY, topBand, flash, ox, oy);
-        if (shadows && shadows->bridgeGame() && view.mode == kModeEnter && layout == Layout::World && kind == Kind::Overworld && view.level == 0) drawShadowSprites(out, camX, camY, topBand, view.room, view.slot, true);
+        if (shadows && shadows->bridgeGame() && (view.mode == kModeEnter || view.mode == kModeLeaveCave) && shadowScene) drawShadowSprites(out, camX, camY, topBand, view.room, view.slot, true);
         roomWaterOk = waterDone && waterOn() && layout == Layout::World && terrainW == out.w && terrainH == out.h && terrainCamX == camX && terrainCamY == camY
                       && terrainMask.size() == (size_t)out.w * (out.h + kWaterMargin);
         if (roomWaterOk) { perf::Scope perfWater(perf::kRoomWater); roomWater(out, camX, camY, true); }      // the game's picture of this screen gets reflections of Link, monsters and shots, the same water

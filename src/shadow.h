@@ -44,7 +44,8 @@ public:
     enum class HandOff { Done, Wait, No };        // Done: copied; Wait: the real game has not made its monsters yet; No: nothing to take over (other kinds, not on this screen)
     HandOff handOffTo(Nes& real) const;
     // The screen Link is leaving (the game has just entered its leave-the-room mode 6, the monsters are as they were): a shadow that carries on from exactly that state.
-    bool captureFrom(const Nes& real, uint32_t seed);
+    bool captureFrom(const Nes& real, int room, uint32_t seed);
+    bool carryItems(Nes& real) const;             // items on the ground of this screen into free slots of the real game
     void adopt(const Nes& src, int room);         // a ready shadow that is a plain copy of `src` standing on `room` (tests of the drawing)
 
 private:
@@ -86,11 +87,15 @@ public:
     ShadowGame pool[12];
     std::vector<ShadowGame*> active;
     int base = -1;
-    bool handOffArmed = false, departed = false;
+    bool handOffArmed = false, departed = false, wasOverworldPlay = false;
+    int lastMode = -1;
     int entryFrames = 0, bridgeHold = 0;
     ShadowGame* bridge = nullptr;
 private:
     void reconcile(Nes& real);
+    void capture(const Nes& real, int room);
+    void dropBridge();
+    void retire(int room);
     void stepAll();
     ShadowGame* alloc();
 };

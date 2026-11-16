@@ -540,7 +540,7 @@ static void testShadow() {
     }
     {   // all eight neighbours walk to their screens with the game's own mode changes and appear; the real game is untouched
         auto r = realGame(0x35); ShadowSet set; set.enabled = true;
-        for (int i = 0; i < 160; i++) set.update(*r);
+        for (int i = 0; i < 330; i++) set.update(*r);
         CHECK_EQ(set.active.size(), (size_t)8);
         std::set<int> rooms; bool allReady = true, monsters = true, linkStandsIn = true;
         for (ShadowGame* g : set.active) {
@@ -590,19 +590,19 @@ static void testShadow() {
             CHECK(set.handOffPending()); CHECK_EQ(r->ram[0x71], 1);
             r->ram[0x13] = 0; r->ram[0x350] = r->ram[0x351] = 0x10; set.update(*r);                         // first frame in submode 0: still the OLD room's monsters (same kinds): they would be wiped
             CHECK(set.handOffPending()); CHECK_EQ(r->ram[0x71], 1);
-            set.update(*r);                                                                                 // second frame: the game has made the new ones
-            CHECK(!set.handOffPending()); CHECK_EQ(r->ram[0x71], 90);
+            const uint8_t seen = sh.ram[0x71]; set.update(*r);                                                // second frame: the game has made the new ones
+            CHECK(!set.handOffPending()); CHECK_EQ(r->ram[0x71], seen); CHECK(seen >= 90);                   // (the shadow went on moving while the game walked Link in: it hands over its present place)
             for (int s = 1; s <= 12; s++) { r->ram[0x34F + s] = 0; }
             r->ram[0x71] = 1; r->ram[0x12] = 4; set.armHandOff(*r); set.update(*r); set.update(*r); set.update(*r);   // (no monsters at all in the real game: nothing to replace yet, keeps waiting)
             CHECK(set.handOffPending()); CHECK_EQ(r->ram[0x71], 1);
-            r->ram[0x350] = r->ram[0x351] = 0x10; set.update(*r); CHECK(!set.handOffPending()); CHECK_EQ(r->ram[0x71], 90);
+            r->ram[0x350] = r->ram[0x351] = 0x10; const uint8_t seen2 = sh.ram[0x71]; set.update(*r); CHECK(!set.handOffPending()); CHECK_EQ(r->ram[0x71], seen2);
             r->ram[0xEB] = 0x35; r->ram[0x12] = 5; r->ram[0x71] = 1; set.armHandOff(*r); set.update(*r);     // a screen without a ready shadow: tried once in mode 5, then given up
             CHECK(!set.handOffPending()); CHECK_EQ(r->ram[0x71], 1);
         }
         {   // the screen Link leaves becomes a shadow, shadows that are still neighbours go on (nothing respawns), the others are dropped, new ones are made
             auto find = [&](ShadowSet& st, int room) -> ShadowGame* { for (ShadowGame* g : st.active) if (g->room() == room) return g; return nullptr; };
             auto q = realGame(0x35); ShadowSet ps; ps.enabled = true;
-            for (int i = 0; i < 160; i++) ps.update(*q);
+            for (int i = 0; i < 330; i++) ps.update(*q);
             CHECK_EQ(ps.active.size(), (size_t)8);
             ShadowGame *g25 = find(ps, 0x25), *g45 = find(ps, 0x45), *g24 = find(ps, 0x24), *g36 = find(ps, 0x36);
             CHECK(g25 && g45 && g24 && g36); const int f25 = g25->frames();
@@ -615,7 +615,7 @@ static void testShadow() {
             ps.update(*q); ps.update(*q);
             ShadowGame* dep = find(ps, 0x35);
             CHECK(dep != nullptr && dep->ready());
-            if (dep) { CHECK_EQ(dep->nes().ram[0x12], 5); CHECK_EQ(dep->nes().ram[0x350], 0x10); CHECK_EQ(dep->nes().ram[0x71], 33); }
+            if (dep) { CHECK_EQ(dep->nes().ram[0x12], 5); CHECK_EQ(dep->nes().ram[0x350], 0x10); CHECK(dep->nes().ram[0x71] >= 33 && dep->nes().ram[0x71] <= 40); }   // (no blink: it ran a frame at once, the monster moved on)
             int n35 = 0; for (ShadowGame* g : ps.active) n35 += g->room() == 0x35; CHECK_EQ(n35, 1);       // (one capture, not one per frame)
             q->ram[0xEB] = 0x36; q->ram[0x12] = 4; q->ram[0x13] = 1; ps.armHandOff(*q);                      // the scroll is skipped: screen 36, mode 4
             CHECK(ps.bridgeGame() == g36);
@@ -639,9 +639,85 @@ static void testShadow() {
             ShadowGame *n37 = nullptr, *k45 = nullptr; for (ShadowGame* g : set.active) { if (g->room() == 0x37) n37 = g; if (g->room() == 0x45) k45 = g; }
             CHECK(n37 != nullptr && n37->frames() <= ShadowSet::kSpinStepsPerFrame); CHECK(k45 != nullptr && k45->frames() > ShadowSet::kSpinStepsPerFrame * 5);
         }
-        r->ram[0x12] = 7; const int f0 = set.active[0]->frames(); set.update(*r); CHECK_EQ(set.active[0]->frames(), f0);
-        r->ram[0x12] = 5; r->ram[0x10] = 1; set.update(*r); CHECK(set.active.empty()); CHECK_EQ(set.baseRoom(), -1);
-        r->ram[0x10] = 0; set.enabled = false; set.update(*r); CHECK(set.active.empty());
+        r->ram[0x12] = 7; const int f0 = set.active[0]->frames(); set.update(*r); CHECK(set.active[0]->frames() > f0);       // (a scroll, a cave, the walk in: the overworld goes on)
+        r->ram[0xE1] = 8; const int f1 = set.active[0]->frames(); set.update(*r); CHECK_EQ(set.active[0]->frames(), f1);     // (the inventory: the game stands still, so do the shadows)
+        r->ram[0xE1] = 0; r->ram[0xE0] = 1; set.update(*r); CHECK_EQ(set.active[0]->frames(), f1); r->ram[0xE0] = 0;
+        r->ram[0x12] = 5; r->ram[0x10] = 1; const int f2 = set.active[0]->frames(); set.update(*r); CHECK(!set.active.empty()); CHECK(set.active[0]->frames() > f2);   // (inside a dungeon too)
+        r->ram[0x10] = 0; r->ram[0x12] = 0x11; set.update(*r); CHECK(set.active.empty()); CHECK_EQ(set.baseRoom(), -1);               // (the overworld is gone: game over, title)
+        r->ram[0x12] = 5; set.enabled = false; set.update(*r); CHECK(set.active.empty());
+    }
+    {   // the overworld goes on while Link is in a cave, down stairs or in a dungeon, and the screen he left carries on as a shadow (no monsters popping up when he comes back)
+        auto find = [&](ShadowSet& st, int room) -> ShadowGame* { for (ShadowGame* g : st.active) if (g->room() == room) return g; return nullptr; };
+        auto r = realGame(0x35); ShadowSet set; set.enabled = true;
+        for (int i = 0; i < 330; i++) set.update(*r);
+        CHECK_EQ(set.active.size(), (size_t)8);
+        r->ram[0x350] = 0x10; r->ram[0x71] = 40;
+        r->ram[0x12] = 0x10; set.update(*r);                                                                // Link steps onto a cave entrance: mode $10 (RoomId is still this screen's)
+        ShadowGame* dep = find(set, 0x35);
+        CHECK(dep != nullptr && dep->ready()); CHECK_EQ(set.active.size(), (size_t)9);
+        if (dep) { CHECK_EQ(dep->nes().ram[0x12], 5); CHECK_EQ(dep->nes().ram[0xEB], 0x35); CHECK_EQ(dep->nes().ram[0x350], 0x10); CHECK(dep->nes().ram[0x71] >= 40 && dep->nes().ram[0x71] <= 45); }
+        ShadowGame* n36 = find(set, 0x36); CHECK(n36 != nullptr);
+        r->ram[0x12] = 0x0B; r->ram[0x350] = 0;                                                             // inside the cave (the real game's object RAM is something else now)
+        const int fd = dep ? dep->frames() : 0, fn = n36 ? n36->frames() : 0; const uint8_t x0 = dep ? dep->nes().ram[0x71] : 0;
+        for (int i = 0; i < 20; i++) set.update(*r);
+        if (dep && n36) { CHECK_EQ(dep->frames(), fd + 20); CHECK_EQ(n36->frames(), fn + 20); CHECK(dep->nes().ram[0x71] != x0); CHECK_EQ(dep->nes().ram[0x350], 0x10); }
+        CHECK_EQ(set.active.size(), (size_t)9); CHECK_EQ(find(set, 0x35), dep);                             // (nothing respawned, no second shadow of the screen)
+        r->ram[0x12] = 0x0A; set.update(*r); CHECK(set.bridgeGame() == dep);                                // coming out: the picture shows the screen without monsters, its shadow stands in
+        r->ram[0x12] = 4; r->ram[0x13] = 0; for (int sl = 1; sl <= 12; sl++) r->ram[0x34F + sl] = 0; r->ram[0x71] = 1;
+        set.update(*r); CHECK(set.handOffPending()); CHECK(set.bridgeGame() == dep);                        // (armed by the way back, not only by a scroll)
+        r->ram[0x350] = 0x10; const uint8_t seen = dep ? dep->nes().ram[0x71] : 0; set.update(*r);          // the game has made its monsters: the shadow's take over
+        CHECK(!set.handOffPending()); CHECK_EQ(r->ram[0x71], seen);
+        r->ram[0x12] = 5; for (int i = 0; i < ShadowSet::kBridgeHold + 2; i++) set.update(*r);
+        CHECK(set.bridgeGame() == nullptr); CHECK(find(set, 0x35) == nullptr); CHECK_EQ(set.active.size(), (size_t)8);   // (the screen is the real game's again: one simulation of it only)
+        // a way back without anything to take over (other monsters, no items): the shadow of the screen is dropped at once
+        r->ram[0x350] = 0x10; r->ram[0x12] = 0x10; set.update(*r); dep = find(set, 0x35); CHECK(dep != nullptr);
+        r->ram[0x12] = 4; r->ram[0x13] = 0; for (int sl = 1; sl <= 12; sl++) r->ram[0x34F + sl] = 0; set.update(*r);
+        r->ram[0x350] = 0x11; set.update(*r); CHECK(!set.handOffPending()); CHECK(find(set, 0x35) == nullptr); CHECK_EQ(r->ram[0x350], 0x11);
+        // stairs: RoomId is already the cellar's when the first frame of mode $10 is seen; a dungeon: CurLevel is already the level's
+        auto q = realGame(0x35); ShadowSet ds; ds.enabled = true;
+        for (int i = 0; i < 330; i++) ds.update(*q);
+        q->ram[0xEB] = 0x3F; q->ram[0x10] = 3; q->ram[0x12] = 0x10; q->ram[0x350] = 0x10; ds.update(*q);
+        ShadowGame* sd = find(ds, 0x35); CHECK(sd != nullptr && sd->ready()); CHECK(find(ds, 0x3F) == nullptr);
+        if (sd) { CHECK_EQ(sd->nes().ram[0xEB], 0x35); CHECK_EQ(sd->nes().ram[0x10], 0); CHECK_EQ(sd->nes().ram[0x12], 5); }
+        q->ram[0x12] = 5; ds.update(*q); q->ram[0x12] = 6; ds.update(*q); q->ram[0x12] = 0x10; q->ram[0xEB] = 0x20; ds.update(*q);      // (inside the dungeon: room scrolls and its own stairs capture nothing)
+        CHECK_EQ(ds.active.size(), (size_t)9); CHECK(find(ds, 0x20) == nullptr);
+        const int fs = sd ? sd->frames() : 0; for (int i = 0; i < 30; i++) ds.update(*q); CHECK(sd && sd->frames() == fs + 30);
+    }
+    {   // a captured shadow has run one frame already (the game hides its sprites in mode 6 / $10; the first picture of the shadow must not be that blank one)
+        auto r = realGame(0x35); r->ram[0x12] = 6; ShadowGame g;
+        CHECK(g.captureFrom(*r, 0x35, 5)); CHECK_EQ(g.frames(), 1); CHECK(g.ready());
+        r->ram[0x12] = 0x10; CHECK(g.captureFrom(*r, 0x34, 5)); CHECK_EQ(g.room(), 0x34); CHECK_EQ(g.nes().ram[0xEB], 0x34);        // (a warp: the room is given, RoomId may be the cellar's)
+        r->ram[0x12] = 5; CHECK(!g.captureFrom(*r, 0x35, 5));                                                                      // (only on the first frame of a leave / warp)
+        r->ram[0x12] = 6; CHECK(!g.captureFrom(*r, 0x61, 5));                                                                      // (not a maze room)
+    }
+    {   // an item that dropped on the screen Link left lies there when he comes back (its despawn timer ran on), even when the game made other monsters
+        auto r = realGame(0x35); ShadowGame g; g.adopt(*r, 0x35); Nes& sh = g.nes();
+        for (int sl = 1; sl <= 12; sl++) sh.ram[0x34F + sl] = 0;
+        sh.ram[0x34F + 4] = 0x60; sh.ram[0xAC + 4] = 0x22; sh.ram[0x28 + 4] = 0x77; sh.ram[0x70 + 4] = 120; sh.ram[0x84 + 4] = 150;
+        for (int sl = 1; sl <= 12; sl++) r->ram[0x34F + sl] = 0;
+        r->ram[0x350] = 0x11; r->ram[0x351] = 0x11; r->ram[0x71] = 9;                                           // two monsters the shadow does not have
+        CHECK(g.handOffTo(*r) == ShadowGame::HandOff::Done);
+        CHECK_EQ(r->ram[0x34F + 3], 0x60); CHECK_EQ(r->ram[0xAC + 3], 0x22); CHECK_EQ(r->ram[0x28 + 3], 0x77); CHECK_EQ(r->ram[0x70 + 3], 120); CHECK_EQ(r->ram[0x84 + 3], 150);   // (the first free slot)
+        CHECK_EQ(r->ram[0x350], 0x11); CHECK_EQ(r->ram[0x351], 0x11); CHECK_EQ(r->ram[0x71], 9);              // (the game's own monsters are left alone)
+        for (int sl = 1; sl <= 12; sl++) r->ram[0x34F + sl] = 0x11;                                              // no free slot: nothing happens
+        CHECK(g.handOffTo(*r) == ShadowGame::HandOff::No);
+        for (int sl = 1; sl <= 12; sl++) r->ram[0x34F + sl] = 0;
+        r->ram[0x350] = 0x11; sh.ram[0x34F + 4] = 0;                                                             // no item: nothing to carry
+        CHECK(g.handOffTo(*r) == ShadowGame::HandOff::No); CHECK_EQ(r->ram[0x34F + 3], 0);
+    }
+    {   // the spawn is seen at the game's own speed: only the unseen walk to the screen is hurried
+        auto r = realGame(0x35); ShadowSet set; set.enabled = true; int settleSteps = 0, spinFast = 0; bool slow = true;
+        for (int i = 0; i < 400; i++) {
+            std::vector<std::pair<ShadowGame*, std::pair<int, int>>> before;
+            for (ShadowGame* g : set.active) before.push_back({g, {g->frames(), (int)g->state()}});
+            set.update(*r);
+            for (auto& b : before) {
+                const int d = b.first->frames() - b.second.first;
+                if (b.second.second == (int)ShadowGame::State::Settling) { settleSteps++; slow = slow && d == 1; }
+                if (b.second.second == (int)ShadowGame::State::SpinUp && d == ShadowSet::kSpinStepsPerFrame) spinFast++;
+            }
+        }
+        CHECK(settleSteps > 100); CHECK(slow); CHECK(spinFast > 50);
     }
     {   // a corner screen has only the neighbours it has
         auto r = realGame(0x00); ShadowSet set; set.enabled = true; set.update(*r);

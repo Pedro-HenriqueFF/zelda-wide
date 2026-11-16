@@ -45,6 +45,8 @@ void section32(Ctx& t) {
     CHECK_EQ(differing(base, picture(&set)), (size_t)0);
     set.pool[0].adopt(*nes, east); monster(set.pool[0], 6, 100, 20); set.active = {&set.pool[0]};
     CHECK_EQ(differing(base, picture(&set)), (size_t)0);
+    set.pool[0].adopt(*nes, east); monster(set.pool[0], 21, 30, 50); set.active = {&set.pool[0]};             // the map marker (OAM 21) pokes out below the status bar: not a monster
+    CHECK_EQ(differing(base, picture(&set)), (size_t)0);
     set.pool[0].adopt(*nes, east); monster(set.pool[0], 6, 100, 100); set.enabled = false;
     CHECK_EQ(differing(base, picture(&set)), (size_t)0);
     set.enabled = true; set.pool[0].reset();
@@ -92,6 +94,49 @@ void section32(Ctx& t) {
         set.bridge = &set.pool[1]; setState(5, room); frames(m, 2, aspect);          // (in play the game's own picture shows its monsters: the bridge is not drawn)
         const std::vector<uint32_t> play = picture(nullptr); CHECK_EQ(differing(play, picture(&set)), (size_t)0);
         set.bridge = nullptr;
+    }
+    {   // the items, fairies and flames of the neighbouring screens glow and glitter like the ones of Link's own screen
+        m.fog = false; m.lighting = true; set.enabled = true;
+        set.pool[0].adopt(*nes, east); Nes& sn = set.pool[0].nes(); for (int sl = 1; sl <= 12; sl++) sn.ram[kObjType + sl] = 0;
+        set.active = {&set.pool[0]}; m.shadows = &set;
+        const float ex = (float)((east & 15) * ROOM_W), ey = (float)((east >> 4) * ROOM_H);
+        m.lightSources.clear(); m.sparkles.clear(); m.gatherShadowLights(room, slot, true); CHECK(m.lightSources.empty());       // (nothing lies there)
+        sn.ram[kObjType + 3] = kTypeItem; sn.ram[kObjState + 3] = kItemHeart; sn.ram[kObjX + 3] = 100; sn.ram[kObjY + 3] = 150;
+        m.gatherShadowLights(room, slot, true);
+        CHECK_EQ(m.lightSources.size(), (size_t)1);
+        if (!m.lightSources.empty()) { CHECK_EQ((int)m.lightSources[0].x, (int)(ex + 108)); CHECK_EQ((int)m.lightSources[0].y, (int)(ey + 150 - HUD_H + 8)); CHECK(m.lightSources[0].r > 200 && m.lightSources[0].b < 140); }   // (a red glow at the heart)
+        for (int i = 0; i < 80; i++) m.gatherShadowLights(room, slot, true);
+        CHECK(!m.sparkles.empty());
+        for (const auto& sp : m.sparkles) CHECK(std::fabs(sp.x - (ex + 108)) < 20 && sp.kind == 3);                          // (red glitter around it)
+        const size_t before = m.sparkles.size(); m.lightSources.clear(); m.gatherShadowLights(room, slot, false); CHECK_EQ(m.sparkles.size(), before); CHECK_EQ(m.lightSources.size(), (size_t)1);   // (a glow without glitter)
+        m.lightSources.clear(); m.gatherShadowLights(east, slot, true); CHECK(m.lightSources.empty());                       // (the screen Link is in is the game's own)
+        sn.ram[kObjType + 3] = kTypePondFairy; sn.ram[kObjState + 3] = 0; m.lightSources.clear(); m.gatherShadowLights(room, slot, false); CHECK_EQ(m.lightSources.size(), (size_t)1);
+        sn.ram[kObjType + 3] = kTypeGuardFire; m.lightSources.clear(); m.gatherShadowLights(room, slot, false); CHECK_EQ(m.lightSources.size(), (size_t)1);
+        sn.ram[kObjType + 3] = kTypeItem; sn.ram[kObjState + 3] = kItemHeart; m.fog = true; m.lightSources.clear(); m.gatherShadowLights(room, slot, false); CHECK_EQ(m.lightSources.size(), (size_t)1);   // (explored)
+        m.fog = false; m.lighting = false; m.sparkles.clear(); m.lightSources.clear();
+    }
+    {   // the overworld goes on behind a cave: the monsters of the screens around it keep moving over the kept backdrop
+        m.shadows = nullptr; m.fog = true; setState(5, room); nes->ram[kMenuState] = 0; frames(m, 3, aspect);
+        setState(0xB, room); frames(m, 2, aspect);
+        set.pool[0].adopt(*nes, east); monster(set.pool[0], 5, 100, 100); set.active = {&set.pool[0]};
+        const std::vector<uint32_t> cave = picture(nullptr), live = picture(&set);
+        CHECK(differing(cave, live) > 100);
+        set.pool[0].nes().ppu.oam[5 * 4 + 3] = 140; set.pool[0].nes().ppu.buildSpriteLayer();
+        const std::vector<uint32_t> moved = picture(&set);
+        CHECK(differing(live, moved) > 100);                                                                  // (it moves while the cave box stands)
+        set.enabled = false; CHECK_EQ(differing(cave, picture(&set)), (size_t)0); set.enabled = true;
+        setState(5, room); frames(m, 2, aspect);
+    }
+    {   // the walk into stairs, a cave or a dungeon (mode $10): the neighbouring screens go on being drawn; the screen Link stands on shows the game's own monsters
+        m.shadows = nullptr; m.fog = true; setState(5, room); nes->ram[kMenuState] = 0; frames(m, 3, aspect);
+        setState(kModeStairs, room); frames(m, 2, aspect);
+        set.pool[0].adopt(*nes, east); monster(set.pool[0], 5, 100, 100); set.pool[1].adopt(*nes, room); monster(set.pool[1], 5, 100, 100); set.active = {&set.pool[0], &set.pool[1]};
+        set.base = room;
+        const std::vector<uint32_t> walk = picture(nullptr), walkLive = picture(&set);
+        CHECK_EQ(differing(walk, walkLive), (size_t)128);                                                      // (the east screen's monster only: the shadow of Link's own screen stays hidden)
+        nes->ram[kRoomId] = 0x7F; const std::vector<uint32_t> stairs = picture(&set);                          // (stairs: RoomId is already the cellar's; the shadow of the screen he stands on stays hidden)
+        CHECK(differing(walk, stairs) <= 128 + 128); nes->ram[kRoomId] = room;
+        setState(5, room); frames(m, 2, aspect);
     }
     m.shadows = nullptr;
 }

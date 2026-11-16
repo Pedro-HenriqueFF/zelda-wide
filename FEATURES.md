@@ -6,13 +6,21 @@ emulator patches the game's code, such as the sword at the screen borders, are n
 
 **Not implemented:** audio (the APU is ignored), widescreen caves and dungeons (they use the big centred picture).
 
-## How the widescreen works
+Contents: [Overworld view](#1-overworld-view) · [Secrets and fog](#2-secrets-and-fog) · [Atmosphere](#3-atmosphere) · [Caves and dungeons](#4-caves-and-dungeons) · [Neighbour screens running](#5-neighbour-screens-running-n-experimental) · [Saving](#6-saving) · [Performance and tools](#7-performance-and-tools)
+
+## 1. Overworld view
+
+### How the widescreen works
+The overworld is drawn wide around the game's own picture, which stays untouched in the middle.
+
 The middle 256 pixels of the overworld view are the game's own picture, untouched, so gameplay, enemies and effects are
 exactly the original. The sides are drawn by decoding the neighbouring overworld screens straight from the ROM (the same
 algorithm as the game's `LayoutRoomOW`), using the game's live palettes. They show terrain (and, with `N`, the monsters of the
 neighbouring screens: see "Neighbour screens running") and follow the camera. Caves, shops, dungeons and menus use the picture sizes described below.
 
-## Camera and zoom
+### Camera, zoom and the glide
+The camera follows Link; changing screens is a short glide instead of the game's scroll.
+
 In the overworld the camera is centred on Link and follows him. When the game repositions Link in one go (for example a
 step forward at the end of a screen change) the camera eases over to him over a few frames. Scrolling to the next screen
 skips the game's own scroll animation. At the end of it the game puts Link about 16 pixels forward on the new screen, so
@@ -23,7 +31,10 @@ plays normally.
 How much you see: by default 448 world pixels below the top (about 2.5 screens tall). `F4` steps through a few sizes
 (1 to 3 screens tall) and `+` / `-` fine-tune it. A smaller view means a bigger picture.
 
-**Picture size and transitions.** The size only changes at calm moments, never in the middle of an animation:
+### Picture size and transitions
+The picture only changes size at calm moments, never in the middle of an animation.
+
+The size only changes at calm moments, never in the middle of an animation:
 - Overworld screens, including walking in/out of a screen edge, the stairs/cave entrance animations (the world stays
   drawn around them), climbing out of a cave, and the curtain that opens after leaving a dungeon: the overworld view.
 - Stairs on the ground: coming out of them (a cave's or a dungeon's stairs, tiles $70-$73) Link stands on the stairs he went in by,
@@ -40,70 +51,9 @@ How much you see: by default 448 world pixels below the top (about 2.5 screens t
   at the overworld size; the camera is already at the spot where Link will appear.
 `F6` turns the big interior picture off, so caves and dungeons use the overworld view size too.
 
-**Menus.** The inventory (Start) appears whole (the unused black rows above its title hold the hint "SELECT - SAVE AND QUIT" in the game's own font). SELECT asks for confirmation first: a small box in the middle of the window ("ARE YOU SURE YOU WANT TO SAVE AND QUIT?" with YES and NO, NO highlighted) opens over the inventory; left and right pick (YES on the left, NO on the right), A confirms (YES fades to black and saves as usual, NO closes the box), B closes it too, and the game sees no buttons while it is up. `F10` still saves at once inside a framed box on top
-of the dimmed game picture (the overworld view, a cave or a dungeon), without the slide-down/slide-up animation. The
-picture underneath doesn't change size when the menu opens. The box is drawn at the window's own resolution with the
-largest whole-number scale that keeps it within about 82% of the window height, so it is always crisp.
+### Sprites at the borders
+Things the game cuts off at the screen edges are put back, and the sword works at every border.
 
-**Status bar (HUD) overlay (`F7`).** During gameplay the original status bar is replaced by four pieces cut out of it and
-placed in the corners of the window: life (-LIFE- and the hearts) top left, the two item boxes top right, the map bottom
-left (with "LEVEL-n" in dungeons) and the rupee/key/bomb counters bottom right. They are the game's own pixels, so
-flashing hearts, items and the map dot keep working. Black is see-through (with a dark panel behind the map and item
-boxes) and each piece has a thin dark outline. The pieces are drawn at the window's own resolution (window height / 288:
-3.75x at 1080p, blown up by a whole number and shrunk smoothly; the map: window height / 360, a whole 3x), so they keep
-their size when you zoom. The world fills the space where the bar was. `F7` switches back to the original bar on top.
-While a game is loading or starting the overlay stays hidden until play begins; during the death sequence it stays until
-the GAME OVER text appears. The fog fades to black together with the rest of the picture.
-
-**Water (`End` reflections, `Page Down` waves).** The two effects are separate switches: `End` turns the reflections off (shore, walls, stairs, trees, Link, monsters and shots in the water), `Page Down` the waves on the big lakes and the sea; with both off the water is left alone. The water is found per pixel: its blue (the commonest colour of the water tiles $89-$98, never a near-black one, so a
-fading-in picture has no water) and the dots inside it, in or right beside a water tile, so ragged shores and outlines stay out of it.
-The stairs and the ladder (tiles $70-$75), the docks (tiles $76/$77), a water tile with white pixels in it and the bare end tile of a ladder are never water.
-Every reflection begins at the BASE of something and only shows if that thing reaches the shore. Walls, stairs and the ladder (a square is
-16 px; a square with two or more wall tiles is wall all over, so curved and capped wall ends count as base too): with the base in the shore
-square the water shows the wall from its base up, 40 px at most (2.5 squares); with the base one square away (one square of ground between)
-it skips the base square and shows the next 24 px; two squares away the next 8 px; three squares away nothing, and a wall or ladder that is
-not tall enough has nothing to show. A sprite standing in front of a wall does not move its base (the terrain behind it is reflected). A tree (round: open at both bottom corners) counts as one square, the trees behind it never reflect,
-and it only reflects when it stands in the shore square. Ground and docks (walkable planks across the water) at the shore do not reflect. Link, monsters, shots and drops reflect about
-their own feet (the mirror image hangs below the feet and only shows where it falls on water, so only something that has a part of its
-sprite in the shore square reflects); arrows, boomerangs, sword beams and Link's own sword (and the rod) are copied instead of mirrored (the blade does not fold up behind his mirror image); Zoras reflect on the water under
-them; Link on stairs reflects about his feet at the shore, and higher up the stairs counts as part of them (his reflection hangs under the shore at the height he stands, clearly visible); he keeps his reflection while the glide walks him into the next screen. The mirror axis is the
-straight top edge of the water tile, shared with the neighbouring columns of the same body within 20 px (rounded corners and rim columns, even a few
-pixels of water at the rim, continue their neighbours' reflection; a shore needs 3 or more land pixels above it, so stray dots make no shore). The reflections always show the terrain as if there were no fog (also for
-screens that are still fogged) and are not cut by the camera: the terrain above the picture is read as well. Sprites standing in the water are left alone; the status bar's sprites do not block anything. Waves (slow light/dark bands with thin bright
-crests) only run on big bodies: water 3+ tiles deep that connects across at least two screens, and the water of the screens at the top right
-of the map (row 1: columns 15 and 16; row 2: column 16); where such water meets a river or pond the waves fade out over 12 pixels. `Home` writes `water_debug.txt` (tile ids and water flags of the current screen, plus the water grid's totals, the water colour found and the pattern table in use) next to the program. The window
-title shows the current screen's column and row. The water grid is built again whenever the game's screen data or the background tile patterns change (another level's attributes in the PRG-RAM, a loaded save, another level's tiles in the CHR-RAM); which tiles count as trees comes from the patterns, the mountain wall tiles ($CE-$D1, $D8-$DB) never do. The picture behind a cave's or shop's box has the water effects of the screen too (the reflections of its scenery), and its water keeps moving (waves, ripples and reflections are made again every frame from the terrain and the room's picture as they were before the water). The effect is drawn on the terrain before the fog is mixed in (so it fades with the fog) and
-again on the game's own picture of the current screen (which holds the sprites). The heavy per-pixel work (the terrain and the fog glow, the water: finding it, the mirror axes, the waves and reflections; the night and dungeon light; the fog over the terrain) is shared between up to 8 CPU threads that are created once; the picture is the same with one thread (a build without `std::thread` simply uses one). The environment variable `ZW_THREADS=n` sets the number of threads (`ZW_THREADS=1` turns them off). Items on the ground (a dropped heart, rupees, a fairy) stand on their lowest drawn row, so their reflection starts right under them.
-
-**Water in dungeons.** A dungeon room's moat (tile $F4, whole squares inside the 24x14-tile floor) gets the same water as the overworld: the back wall (the 4-tile frame all round, doors included) reflects from its base, 40 px at most, Link, monsters, items and shots reflect about their feet, and the ripples of small water run. The water is found on the room without its sprites (a white sword over the moat does not hide the reflections), the reflections are drawn on the real picture. The effect is drawn on the room's picture before the torch light (enter, play, leave, death, end of level, and the transitions: the room that scrolls away keeps its moat, the frozen monsters and Link reflect in it, and the next room's moat scrolls in; the room that scrolls away keeps the look its water had in the last frame of play (reflections, ripples and waves stand still, they are the recorded pixels and move with the room, so the water does not change while it scrolls; it is drawn only inside the playable screen, never on the bars above and below it; Link's own reflection is not part of it, the game hides him in a scroll), the room that scrolls in shows its moat and reflections from the first rows on (going up the game has not laid it out, so its moat is read from the picture by the moat's colour, and its wall is made up from the old room's), and the last pixels of a scroll keep the water on the moving picture; on the stairs the room keeps its water until the picture is black); not in a cellar. `Home` in a dungeon writes the room's tile ids to `water_debug.txt`.
-
-**Link in dungeon doorways.** Link is layered per pixel while he is lined up with a doorway of the room (within 4 px of its columns/rows: standing beside it he stays as the game draws him) (enter, play, leave and the scroll, in both rooms of a scroll); closed doors and walls are left to the game. A regular open door (black passage, the floor of the doorway beside it): the frame beyond the black part covers Link (the lintel above the top door, the bar below the bottom door, the bar and outer wall beside a left/right door), while the passage walls and the floor of the doorway are covered by Link (the game hid whole 8 px halves of his sprite behind them at the left/right border). A blasted hole (a black cell in the wall): every non-black pixel of the wall around it covers Link, so he goes into it; at the left and right holes every pixel above a covered pixel of the same column is covered too, so no bit of his cap pokes out above the hole. The doors are found in the picture (black pixels of the background layer in the doorway's cell), so no door data is read; The sword (or rod) he holds into a passage is covered by the same walls (never shown extra). The effect is drawn before the water and the torch light.
-
-**Sprites at the top and bottom walls (dungeons).** The PPU draws only 8 sprites per line and the corner torches, Link, the candle's fire, a bomb's smoke and a sword beam's splash together go over that on the torches' rows, so the extra sprites vanished at the top and bottom walls (the emulator's PPU keeps the sprites it leaves out in a second layer; they are drawn over the wall, except the ones the game puts behind the background; Link's own pixels there go through the doorway rules above). They are part of the frozen replay too: they scroll away with the room. With the status bar as an overlay, sprites that stick out above or below the room are also drawn whole into the margin there; Link (he goes into the wall) and the status bar's sprites are not.
-
-**Smooth room scroll in dungeons.** The game scrolls a dungeon room sideways 2 px every frame but up/down 8 px every 4th frame (22 jumps of a whole tile row, so it looks jerky and finishes sooner). With the widescreen on, the emulator's PPU eases the up/down scroll over each 8 px step at 2 px a frame, the speed of the sideways scroll, so the room moves continuously (the picture trails the game by at most 6 px, and the frozen sprites, light and glitter follow the same position). Only the play area moves (not the status bar), only in dungeons, and only for steps of exactly one tile row: any other jump of the scroll shows at once. `Widescreen::smoothScroll` turns it off.
-
-**Cloud shadows (`F12`).** 40 cloud shadows drift slowly (7 to 18 pixels per second) over the overworld (world coordinates; the world
-wraps around) and cover about a fifth of the map. Each cloud is a random tree of 2 to 7 shapes, each shape a smooth random closed loop
-(no ellipses, no sharp corners). The shade is flat (20% darker, slightly cooler in blue) with a gradient about 11 pixels wide at the
-edge and no outline. A cloud keeps its heading for 6 to 20 seconds, then turns slowly to a new one. They darken the whole picture, Link
-and the monsters included, never the status bar. They stay through every overworld transition (scrolling and gliding between screens,
-entering and leaving screens, the curtain, caves (the backdrop behind the box keeps drifting), stairs, the death animation) and are
-gone only inside dungeons, cave interiors and menus.
-
-**Death scene.** The game's death fade only rewrites the bottom half of the background palette, so the colours of the top half (for
-example white gravestones) would stay bright; they fade along with the bottom half, until the GAME OVER text shows. Link's own pixels keep the game's colours. Secret
-marks never stay brighter than the scenery under them.
-
-**Caves and shops (`F9`).** The inside of an overworld cave or shop appears in a framed box over the dimmed overworld, like
-the inventory. The overworld behind it is the picture as it was just before Link went in, with nothing that moves in it
-(no Link, enemies, projectiles or effects: only the scenery), so there is no fade to black: it stays on screen until the
-cave's picture is ready, and then the dimmed backdrop and the box appear together (Link shows up a moment later, as in the
-game). On the way out the box disappears with the cave and the overworld is simply back. The inventory opened inside a
-cave goes on top of the (dimmed) cave box. The box shows the game's play area at a whole-number scale (up to about 78% of
-the window height). With `F9` off, caves use the big full-size picture instead (see `F6`). Dungeon cellars are unchanged.
-
-**Animations and sprites at the borders.**
 - *Bomb flash:* the game turns on the PPU's grayscale bit for a few frames. Here it is a circle of gray (200 pixels around
   the bomb, fading out over the last 48) that covers the current screen and reaches into the neighbouring screens. The
   status bar is never affected.
@@ -125,7 +75,20 @@ the window height). With `F9` off, caves use the big full-size picture instead (
   - *Leaving a cave:* for a couple of frames Link's sprite still sits at the cave position; it is not drawn there.
   Sprites of the scene never end up in the status bar pieces.
 
-**Minimap (`F8` cycles through three styles).** In dungeons the game's own map is always used. On the overworld:
+### Status bar overlay (`F7`) and minimap (`F8`)
+The status bar is cut into four pieces in the window corners; the map shows the screens you have seen.
+
+During gameplay the original status bar is replaced by four pieces cut out of it and
+placed in the corners of the window: life (-LIFE- and the hearts) top left, the two item boxes top right, the map bottom
+left (with "LEVEL-n" in dungeons) and the rupee/key/bomb counters bottom right. They are the game's own pixels, so
+flashing hearts, items and the map dot keep working. Black is see-through (with a dark panel behind the map and item
+boxes) and each piece has a thin dark outline. The pieces are drawn at the window's own resolution (window height / 288:
+3.75x at 1080p, blown up by a whole number and shrunk smoothly; the map: window height / 360, a whole 3x), so they keep
+their size when you zoom. The world fills the space where the bar was. `F7` switches back to the original bar on top.
+While a game is loading or starting the overlay stays hidden until play begins; during the death sequence it stays until
+the GAME OVER text appears. The fog fades to black together with the rest of the picture.
+
+In dungeons the game's own map is always used. On the overworld:
 - *scaled-down map* (default): one small picture (8x6 pixels) of each screen you have seen, drawn with the overworld's own
   palette, dark fog for the screens you haven't, and a white frame around the screen you are in;
 - *blue*: the game's grey map with the screens you have seen in blue and the current one in green;
@@ -138,47 +101,27 @@ The black GAME OVER screen at the end of the death sequence is shown as plain bl
 middle of the window, without the status bar. Title screen, file select and the continue screen: the plain, full-size
 original picture.
 
-**Day and night, dynamic lights (`F1`, `T`, `L`).** A day lasts 10 minutes and starts at noon (the clock is 6:00 at the start of the cycle);
-`T` jumps 10% of a day ahead and prints the time, `L` makes a lightning flash happen (visible when it is dark). Full daylight until 16:00,
-then a twilight: the world turns a little orange (full at 18:00) while the dusk darkens it, then night until about 3:00 and the dawn. At
-night the overworld is dark and bluish except around Link, who sees a disc of about 56 pixels in full light that fades out by 150 pixels
-(the disc follows his steady overworld place: it does not jump when he enters or leaves caves and dungeons, and it is on him at once after
-dying and continuing). Now and then, only after dark, lightning flashes light the whole world for a moment.
-Things that glow light their surroundings in their own colour: sword shots and splashes (not a plain swing), wizzrobe magic (violet), monster
-sword beams, fireballs (Zora, Aquamentus, statues, Gleeok...), the flames in caves and shops, the guards of Zelda and the candle's fire
-(orange, flickering), a bomb's explosion (a wide warm flash), dropped items (a golden sparkle), and Link himself while the candle is his B
-item (a small blue light with the blue candle, a stronger warm one with the red candle). The statues' glow (also behind a cave's box) and Link's candle light carry on (in a dungeon the candle's light goes on while a room scrolls, although the game hides Link then: it moves from where he left the room towards where the next room's door puts him, as far as the slide has got)
-through screen changes. Sparkles are drawn on top of the lighting and show by day too: fairies (the pond fairy, who starts sparkling a few
-frames after the screen appears, and the ones monsters drop) are surrounded by random pink sparkles that rise and fade; a triforce shard
-lying in a room glitters gold (also while Link holds it up and through the end of the level); heart containers (in a room, dropped, or a cave's wares and gifts) glitter red like heart drops; the rupees, five rupees and hearts a cave or a secret hands out glitter like the dropped ones (amber, blue, red; not the price rupee beside shop wares); dropped hearts glitter red, rupees amber and the five-rupee ones blue, each with a weak glow; a boomerang or an
-arrow (also inside caves and shops) leaves a short trail of white sparkles under the sprite, starting at the head of an arrow, with no glow.
-Armos glow blue (red for the secret one) with a faint halo by day:
-the statues on the screen Link is on and on every explored screen (also while a cave or a dungeon is entered), and an awakened armos carries its light along. Lights and
-sparkles belong to their screen: they are cleared when the screen changes or Link goes into a cave or dungeon. In a dungeon the game hides every monster and item a frame before a room scrolls, during the scroll, and when the picture fades (stairs, going into a cellar, climbing out of one); the last frame of play (in a cellar: the cellar's) is kept and drawn again, frozen: the monsters, items, their glows and sparkles scroll away with the room that is leaving; when the picture fades they stay until it is black, fading with it (they are drawn until the picture is really black). The glitter of the frozen things goes on being made while they scroll away or stay, and moves with the room (the boomerang's white trail is not: the food Link drops lies in the same object slot, and the trail would hang around the frozen meat); the old room's objects, still in the game's memory until the next room plays, make no light or glitter, so nothing flashes at their old place when the next room arrives or starts to play. Climbing out of a cellar (whatever mode the game uses for it: the stairs, $A or the room mode) keeps the cellar's own picture and light, with its bats and without the room's torches, until the picture is black (the light stays around the place where Link stood in the picture: the game moves him in memory before the cellar has faded) (judged by its brightest pixel, so a faint picture still counts as there). One empty frame of play right after frames with sprites does not wipe the record. The hidden objects' own positions are not used during the scroll.
-The candle can only be used where its flame can stop inside the screen: the flame stops 32 px from Link, so B is released when he is
-closer than that to the border he faces. (A flame that would pass a border anyway is tracked beyond it and drawn there.)
-In dungeons, every room that is not dark gets four wall torches, set along the room's corner lines, flame pointing out to the corner of
-the room. When a room appears (entering the dungeon, stairs, after a slide to the next room) it is dark and the torches are there but unlit,
-in the room's shade; once play starts they light up and the room fades to about half brightness with warm light around each torch. When the game fades the picture (stairs, cellars) the flames and their light dim with the picture's own palette fade. While the
-game slides to the next room the room that is left keeps its lit torches (moving with the picture, also up and down) and the next room
-comes in dark with unlit torches (also when it slides in from above), and the picture of the room that has arrived stays dark until play starts. Torches only show where the room itself is revealed (not over the entrance curtain). The lighting stays
-through the death scene, the end of a level and the stairs (the torches and the room's shade stay while Link walks down and the old room fades out; the cellar's own lighting starts when its picture appears). Rooms the game itself makes dark are left alone; cellars have no torches: they are dim with a circle of sight
-around Link. Caves and shops are dim in the same way, with light from the flames inside. The time of day is not saved.
+### Menus
+The inventory appears whole; SELECT in it asks "SAVE AND QUIT?".
 
-**Crowded rooms (no flicker, no slowdown).** The NES can only draw 8 sprites on one line, so in a room with many enemies and shots the game
-flickers the sprites by rotating which ones are left out; and the game does all its work inside the interrupt that starts every frame, so when a
-frame's work takes longer than a frame the next interrupt is lost and the game runs at half speed. Both are off by default: every sprite of a line is
-drawn (the PPU is told not to leave any out), and when the game is still working at the end of the picture the emulator waits for it (at most 1.5
-frames of CPU time) before the next frame starts, so the game keeps its normal speed. `Insert` switches the original behaviour back on. Nothing
-changes when widescreen is off (`F3`).
+The inventory (Start) appears whole (the unused black rows above its title hold the hint "SELECT - SAVE AND QUIT" in the game's own font). SELECT asks for confirmation first: a small box in the middle of the window ("ARE YOU SURE YOU WANT TO SAVE AND QUIT?" with YES and NO, NO highlighted) opens over the inventory; left and right pick (YES on the left, NO on the right), A confirms (YES fades to black and saves as usual, NO closes the box), B closes it too, and the game sees no buttons while it is up. `F10` still saves at once inside a framed box on top
+of the dimmed game picture (the overworld view, a cave or a dungeon), without the slide-down/slide-up animation. The
+picture underneath doesn't change size when the menu opens. The box is drawn at the window's own resolution with the
+largest whole-number scale that keeps it within about 82% of the window height, so it is always crisp.
 
-## Hidden secrets
+## 2. Secrets and fog
+
+### Hidden secrets
+Secrets that are still hidden in explored screens carry a small mark.
+
 In explored overworld screens the secrets that are still hidden are marked, using the ROM's own layout data (so every one is
 found, whatever the screen looks like): a bombable rock wall has a small dark crack, a burnable tree is tinted yellowish with a smooth gradient that grows from the top of the tree to its bottom (the ground around it is not tinted), the blue in the eyes of the armos statue that hides stairs (the game picks it by room and position) is red, and a rock or gravestone you can push has a slight gray tint that grows from top to bottom (the ground behind is never painted: it is the colour the square's corners show). All marks fade out with the picture (death scene, scene fades) and are already there while a screen is being unfogged. A secret that has been found is no longer marked, nor is one that belongs to the other
 quest (the game's own rule). The marks are drawn on the decoded neighbouring screens and on the game's own picture of the
 current screen (not on top of Link or a monster). The Lost Woods and the Lost Hills have no mark.
 
-## Fog of war
+### Fog of war
+Screens you have never stood in are covered by fog that thins towards explored neighbours.
+
 Screens you have never stood in are covered by near-black fog. Next to an explored screen the fog starts fully
 transparent at the border and becomes solid over about 37 pixels where Link could walk over the border (water counts as
 walkable only where its body touches ground Link can stand on, a bridge or a shore); the sand of the desert screens (tiles $84-$88; the game blocks tiles from $89 on) counts as ground; where the tiles on either side are blocked (walls, trees, rocks) it becomes solid within about 12 pixels, with a
@@ -192,7 +135,9 @@ screens), and the glow it gives its fogged neighbours follows the front, so ther
 (SAVE on the game over screen, or SAVE AND QUIT in the inventory); discoveries made since the last save are dropped when you load a file from the
 file-select screen, and are not kept when you quit without saving. The glow of every fogged room is worked out once per pixel and kept between frames; it is worked out again when the explored rooms or the screen data change (and not at all while a room is being unfogged).
 
-## Lost Woods and Lost Hills
+### Lost Woods and Lost Hills
+The two mazes show one screen at its original size under a haze, and mist covers the way in and out.
+
 The two mazes (screen $61 in the south-west, screen $1B in the north) are never unfogged in the overworld: their fog stays whatever you do, and the
 map (minimap) only shows them once you have left them the right way at least once (the Woods to the west after up, left, down, left; the Hills to the north
 after four times up). Inside, the game's own single screen is shown at its original size (like a dungeon: no neighbours, no gliding, no skipped scrolls; a
@@ -203,35 +148,131 @@ for 2 seconds, then the mist lifts over the new view with Link already there. Th
 dim and haze as the bars above and below it. Link's own light (his sight, the candle) goes with his sprite while the maze scrolls into itself. The solved state lives in the same `<rom>.fog` file as the
 explored screens (a maze screen's bit there means "solved").
 
+## 3. Atmosphere
 
-## Command line options
+### Day and night, dynamic lights (`F1`, `T`, `L`)
+A 10-minute day with twilight and night; things that glow light their surroundings.
 
-Command line options: `--no-wide`, `--no-fog`, `--trace`, `--perf` (shows in the window title, once a second, where the time of a frame goes: the game, the compositor and its stages, the upload to the GPU, the present and the pacing wait; also writes them with a description of the machine - SDL renderer, threads, build type - to `<romname>.perf.txt` next to the ROM), `--verify` (prints, for every screen you enter, how many
+- **The clock.** A day lasts 10 minutes and starts at noon (the clock is 6:00 at the start of the cycle); `T` jumps 10% of a day ahead and prints the time, `L` makes a lightning flash happen (visible when it is dark). Full daylight until 16:00, then a twilight: the world turns a little orange (full at 18:00) while the dusk darkens it, then night until about 3:00 and the dawn. At night the overworld is dark and bluish except around Link, who sees a disc of about 56 pixels in full light that fades out by 150 pixels (the disc follows his steady overworld place: it does not jump when he enters or leaves caves and dungeons, and it is on him at once after dying and continuing). Now and then, only after dark, lightning flashes light the whole world for a moment.
+- **What glows.** Things that glow light their surroundings in their own colour: sword shots and splashes (not a plain swing), wizzrobe magic (violet), monster sword beams, fireballs (Zora, Aquamentus, statues, Gleeok...), the flames in caves and shops, the guards of Zelda and the candle's fire (orange, flickering), a bomb's explosion (a wide warm flash), dropped items (a golden sparkle), and Link himself while the candle is his B item (a small blue light with the blue candle, a stronger warm one with the red candle). The statues' glow (also behind a cave's box) and Link's candle light carry on (in a dungeon the candle's light goes on while a room scrolls, although the game hides Link then: it moves from where he left the room towards where the next room's door puts him, as far as the slide has got) through screen changes.
+- **Sparkles.** Sparkles are drawn on top of the lighting and show by day too: fairies (the pond fairy, who starts sparkling a few frames after the screen appears, and the ones monsters drop) are surrounded by random pink sparkles that rise and fade; a triforce shard lying in a room glitters gold (also while Link holds it up and through the end of the level); heart containers (in a room, dropped, or a cave's wares and gifts) glitter red like heart drops; the rupees, five rupees and hearts a cave or a secret hands out glitter like the dropped ones (amber, blue, red; not the price rupee beside shop wares); dropped hearts glitter red, rupees amber and the five-rupee ones blue, each with a weak glow; a boomerang or an arrow (also inside caves and shops) leaves a short trail of white sparkles under the sprite, starting at the head of an arrow, with no glow. The items, fairies and flames of the neighbouring screens glow and glitter the same way (see section 5).
+- **Armos and screens.** Armos glow blue (red for the secret one) with a faint halo by day: the statues on the screen Link is on and on every explored screen (also while a cave or a dungeon is entered), and an awakened armos carries its light along. Lights and sparkles belong to their screen: they are cleared when the screen changes or Link goes into a cave or dungeon.
+- **The candle.** The candle can only be used where its flame can stop inside the screen: the flame stops 32 px from Link, so B is released when he is closer than that to the border he faces. (A flame that would pass a border anyway is tracked beyond it and drawn there.)
 
-## Neighbour screens running (shadow games, `N`, experimental)
+### Cloud shadows (`F12`)
+Soft cloud shadows drift over the overworld.
 
-The NES game only simulates the screen Link is in. With `N` on, every screen next to Link (up to eight, diagonals included) gets a **shadow game**: a
-copy of the running game that walks into that screen using the game's own code and keeps running there, so the monsters, great fairies and items on
-the ground of the neighbouring screens move in the margins of the widescreen view.
+40 cloud shadows drift slowly (7 to 18 pixels per second) over the overworld (world coordinates; the world
+wraps around) and cover about a fifth of the map. Each cloud is a random tree of 2 to 7 shapes, each shape a smooth random closed loop
+(no ellipses, no sharp corners). The shade is flat (20% darker, slightly cooler in blue) with a gradient about 11 pixels wide at the
+edge and no outline. A cloud keeps its heading for 6 to 20 seconds, then turns slowly to a new one. They darken the whole picture, Link
+and the monsters included, never the status bar. They stay through every overworld transition (scrolling and gliding between screens,
+entering and leaving screens, the curtain, caves (the backdrop behind the box keeps drifting), stairs, the death animation) and are
+gone only inside dungeons, cave interiors and menus.
 
-- **How a shadow is made.** While the real game is in plain overworld play, each neighbour gets a copy of the game (its own RAM, cartridge RAM, CPU and
-  a "lite" PPU that draws nothing). The stand-in Link is put at the edge facing the target screen and the game is put into its leave-the-room mode; the
-  game then scrolls, loads the screen and spawns its monsters by itself (a diagonal neighbour takes two such steps). The shadow is drawn from the moment
-  it arrives, so its monsters appear with the game's normal spawn smoke; it then runs in step with the real game, on the thread pool. Its random numbers are
-  reseeded so that it does not move like the real game.
-- **Shadows persist.** When Link walks to another screen, the shadows of screens that are still neighbours simply go on (nothing respawns); only the
-  missing neighbours get new shadows and the ones that are now two screens away are dropped. **The screen Link leaves** becomes a shadow too, from exactly
-  the state it was in (its monsters carry on), so when Link comes back they have been alive all along.
-- **The stand-in Link** takes no input and cannot die (his hearts are refilled), cannot take a cave or stairs, and is never drawn. Monster shots are
-  deleted, so nothing flies in a shadow: the monsters roam but do not shoot.
-- **What is drawn.** The sprites of each shadow (monsters, fairies, items) under the game's picture of Link's screen and only on explored screens;
-  monsters near water reflect in it (the `End` switch applies). During the glide between screens the shadows keep running and stay drawn, so the monsters
-  keep moving while the camera moves.
-- **Hand-off.** When Link walks into a screen with a shadow, the shadow's monsters take over from the fresh ones the game loads, so they carry on
-  instead of popping: right after the game has made its own monsters (a couple of frames into its enter-room mode) the shadow's monsters (all per-monster
-  variables) are copied into the game. The game does not draw its monsters while Link walks in, so until it does the shadow's monsters are drawn over
-  its picture: no blink. Nothing is copied when the real game's monsters are of kinds the shadow does not have; then they appear as in the original.
-- **Safety net.** A shadow whose game leaves plain play (for example by entering a cave) is dropped from the picture and started again after a pause, up to
-  three times. Shadows wait while the real game is in a cave or in the inventory, and are dropped in dungeons.
-- **Not done yet:** glow and sparkles of the neighbours at night, more shadow screens for the very wide zoom levels (two screens away).
+### Water (`End` reflections, `Page Down` waves)
+Lakes, rivers and ponds mirror the scenery, Link, monsters and shots; the big lakes and the sea have waves.
+
+- **Switches.** The two effects are separate switches: `End` turns the reflections off (shore, walls, stairs, trees, Link, monsters and shots in the water), `Page Down` the waves on the big lakes and the sea; with both off the water is left alone.
+- **Finding the water.** The water is found per pixel: its blue (the commonest colour of the water tiles $89-$98, never a near-black one, so a fading-in picture has no water) and the dots inside it, in or right beside a water tile, so ragged shores and outlines stay out of it. The stairs and the ladder (tiles $70-$75), the docks (tiles $76/$77), a water tile with white pixels in it and the bare end tile of a ladder are never water.
+- **What reflects.** Every reflection begins at the BASE of something and only shows if that thing reaches the shore. Walls, stairs and the ladder (a square is 16 px; a square with two or more wall tiles is wall all over, so curved and capped wall ends count as base too): with the base in the shore square the water shows the wall from its base up, 40 px at most (2.5 squares); with the base one square away (one square of ground between) it skips the base square and shows the next 24 px; two squares away the next 8 px; three squares away nothing, and a wall or ladder that is not tall enough has nothing to show. A sprite standing in front of a wall does not move its base (the terrain behind it is reflected). A tree (round: open at both bottom corners) counts as one square, the trees behind it never reflect, and it only reflects when it stands in the shore square. Ground and docks (walkable planks across the water) at the shore do not reflect. Link, monsters, shots and drops reflect about their own feet (the mirror image hangs below the feet and only shows where it falls on water, so only something that has a part of its sprite in the shore square reflects); arrows, boomerangs, sword beams and Link's own sword (and the rod) are copied instead of mirrored (the blade does not fold up behind his mirror image); Zoras reflect on the water under them; Link on stairs reflects about his feet at the shore, and higher up the stairs counts as part of them (his reflection hangs under the shore at the height he stands, clearly visible); he keeps his reflection while the glide walks him into the next screen.
+- **Mirror axis, fog, camera.** The mirror axis is the straight top edge of the water tile, shared with the neighbouring columns of the same body within 20 px (rounded corners and rim columns, even a few pixels of water at the rim, continue their neighbours' reflection; a shore needs 3 or more land pixels above it, so stray dots make no shore). The reflections always show the terrain as if there were no fog (also for screens that are still fogged) and are not cut by the camera: the terrain above the picture is read as well. Sprites standing in the water are left alone; the status bar's sprites do not block anything.
+- **Waves.** Waves (slow light/dark bands with thin bright crests) only run on big bodies: water 3+ tiles deep that connects across at least two screens, and the water of the screens at the top right of the map (row 1: columns 15 and 16; row 2: column 16); where such water meets a river or pond the waves fade out over 12 pixels.
+- **The water grid.** The water grid is built again whenever the game's screen data or the background tile patterns change (another level's attributes in the PRG-RAM, a loaded save, another level's tiles in the CHR-RAM); which tiles count as trees comes from the patterns, the mountain wall tiles ($CE-$D1, $D8-$DB) never do. The picture behind a cave's or shop's box has the water effects of the screen too (the reflections of its scenery), and its water keeps moving (waves, ripples and reflections are made again every frame from the terrain and the room's picture as they were before the water). The effect is drawn on the terrain before the fog is mixed in (so it fades with the fog) and again on the game's own picture of the current screen (which holds the sprites).
+- **Dropped items.** Items on the ground (a dropped heart, rupees, a fairy) stand on their lowest drawn row, so their reflection starts right under them.
+- **Debugging.** `Home` writes `water_debug.txt` (tile ids and water flags of the current screen, plus the water grid's totals, the water colour found and the pattern table in use) next to the program. The window title shows the current screen's column and row.
+
+### Death scene
+The whole picture fades when Link dies, not only the bottom half the game fades.
+
+The game's death fade only rewrites the bottom half of the background palette, so the colours of the top half (for
+example white gravestones) would stay bright; they fade along with the bottom half, until the GAME OVER text shows. Link's own pixels keep the game's colours. Secret
+marks never stay brighter than the scenery under them.
+
+## 4. Caves and dungeons
+
+### Caves and shops (`F9`)
+The inside of a cave or shop appears in a framed box over the dimmed, living overworld.
+
+The inside of an overworld cave or shop appears in a framed box over the dimmed overworld, like
+the inventory. The overworld behind it is the picture as it was just before Link went in, with nothing that moves in it
+(no Link, enemies, projectiles or effects: only the scenery), so there is no fade to black: it stays on screen until the
+cave's picture is ready, and then the dimmed backdrop and the box appear together (Link shows up a moment later, as in the
+game). On the way out the box disappears with the cave and the overworld is simply back. The inventory opened inside a
+cave goes on top of the (dimmed) cave box. The box shows the game's play area at a whole-number scale (up to about 78% of
+the window height). With `F9` off, caves use the big full-size picture instead (see `F6`). Dungeon cellars are unchanged.
+With neighbour screens running (`N`, section 5) the monsters and items of every screen around the cave, the one Link went in from included, keep moving over that backdrop.
+
+### Dungeon torches and light
+Every lit dungeon room gets four wall torches; cellars and caves are dim with a circle of sight.
+
+In dungeons, every room that is not dark gets four wall torches, set along the room's corner lines, flame pointing out to the corner of the room. When a room appears (entering the dungeon, stairs, after a slide to the next room) it is dark and the torches are there but unlit, in the room's shade; once play starts they light up and the room fades to about half brightness with warm light around each torch. When the game fades the picture (stairs, cellars) the flames and their light dim with the picture's own palette fade. While the game slides to the next room the room that is left keeps its lit torches (moving with the picture, also up and down) and the next room comes in dark with unlit torches (also when it slides in from above), and the picture of the room that has arrived stays dark until play starts. Torches only show where the room itself is revealed (not over the entrance curtain). The lighting stays through the death scene, the end of a level and the stairs (the torches and the room's shade stay while Link walks down and the old room fades out; the cellar's own lighting starts when its picture appears). Rooms the game itself makes dark are left alone; cellars have no torches: they are dim with a circle of sight around Link. Caves and shops are dim in the same way, with light from the flames inside. The time of day is not saved.
+
+### Dungeon objects during room changes
+The game hides monsters and items in a scroll or a fade; the last frame of play is replayed frozen.
+
+In a dungeon the game hides every monster and item a frame before a room scrolls, during the scroll, and when the picture fades (stairs, going into a cellar, climbing out of one); the last frame of play (in a cellar: the cellar's) is kept and drawn again, frozen: the monsters, items, their glows and sparkles scroll away with the room that is leaving; when the picture fades they stay until it is black, fading with it (they are drawn until the picture is really black). The glitter of the frozen things goes on being made while they scroll away or stay, and moves with the room (the boomerang's white trail is not: the food Link drops lies in the same object slot, and the trail would hang around the frozen meat); the old room's objects, still in the game's memory until the next room plays, make no light or glitter, so nothing flashes at their old place when the next room arrives or starts to play. Climbing out of a cellar (whatever mode the game uses for it: the stairs, $A or the room mode) keeps the cellar's own picture and light, with its bats and without the room's torches, until the picture is black (the light stays around the place where Link stood in the picture: the game moves him in memory before the cellar has faded) (judged by its brightest pixel, so a faint picture still counts as there). One empty frame of play right after frames with sprites does not wipe the record. The hidden objects' own positions are not used during the scroll.
+
+### Water in dungeons
+A room's moat gets the overworld's water: the wall reflects, so do Link, monsters and items.
+
+A dungeon room's moat (tile $F4, whole squares inside the 24x14-tile floor) gets the same water as the overworld: the back wall (the 4-tile frame all round, doors included) reflects from its base, 40 px at most, Link, monsters, items and shots reflect about their feet, and the ripples of small water run. The water is found on the room without its sprites (a white sword over the moat does not hide the reflections), the reflections are drawn on the real picture. The effect is drawn on the room's picture before the torch light (enter, play, leave, death, end of level, and the transitions: the room that scrolls away keeps its moat, the frozen monsters and Link reflect in it, and the next room's moat scrolls in; the room that scrolls away keeps the look its water had in the last frame of play (reflections, ripples and waves stand still, they are the recorded pixels and move with the room, so the water does not change while it scrolls; it is drawn only inside the playable screen, never on the bars above and below it; Link's own reflection is not part of it, the game hides him in a scroll), the room that scrolls in shows its moat and reflections from the first rows on (going up the game has not laid it out, so its moat is read from the picture by the moat's colour, and its wall is made up from the old room's), and the last pixels of a scroll keep the water on the moving picture; on the stairs the room keeps its water until the picture is black); not in a cellar. `Home` in a dungeon writes the room's tile ids to `water_debug.txt`.
+
+### Link in dungeon doorways
+Link is layered per pixel with the doorway he stands in, so he walks into holes and doors.
+
+Link is layered per pixel while he is lined up with a doorway of the room (within 4 px of its columns/rows: standing beside it he stays as the game draws him) (enter, play, leave and the scroll, in both rooms of a scroll); closed doors and walls are left to the game. A regular open door (black passage, the floor of the doorway beside it): the frame beyond the black part covers Link (the lintel above the top door, the bar below the bottom door, the bar and outer wall beside a left/right door), while the passage walls and the floor of the doorway are covered by Link (the game hid whole 8 px halves of his sprite behind them at the left/right border). A blasted hole (a black cell in the wall): every non-black pixel of the wall around it covers Link, so he goes into it; at the left and right holes every pixel above a covered pixel of the same column is covered too, so no bit of his cap pokes out above the hole. The doors are found in the picture (black pixels of the background layer in the doorway's cell), so no door data is read; The sword (or rod) he holds into a passage is covered by the same walls (never shown extra). The effect is drawn before the water and the torch light.
+
+### Sprites at the top and bottom walls
+Sprites the PPU would leave out on the torches' rows are drawn.
+
+The PPU draws only 8 sprites per line and the corner torches, Link, the candle's fire, a bomb's smoke and a sword beam's splash together go over that on the torches' rows, so the extra sprites vanished at the top and bottom walls (the emulator's PPU keeps the sprites it leaves out in a second layer; they are drawn over the wall, except the ones the game puts behind the background; Link's own pixels there go through the doorway rules above). They are part of the frozen replay too: they scroll away with the room. With the status bar as an overlay, sprites that stick out above or below the room are also drawn whole into the margin there; Link (he goes into the wall) and the status bar's sprites are not.
+
+### Smooth room scroll
+Up/down room changes scroll as smoothly as sideways ones.
+
+The game scrolls a dungeon room sideways 2 px every frame but up/down 8 px every 4th frame (22 jumps of a whole tile row, so it looks jerky and finishes sooner). With the widescreen on, the emulator's PPU eases the up/down scroll over each 8 px step at 2 px a frame, the speed of the sideways scroll, so the room moves continuously (the picture trails the game by at most 6 px, and the frozen sprites, light and glitter follow the same position). Only the play area moves (not the status bar), only in dungeons, and only for steps of exactly one tile row: any other jump of the scroll shows at once. `Widescreen::smoothScroll` turns it off.
+
+## 5. Neighbour screens running (`N`, experimental)
+
+The NES game only simulates the screen Link is in. With `N` on, every screen next to Link (up to eight, diagonals included) gets a **shadow game**: a copy of the running game that walks into that screen using the game's own code and keeps running there, so the monsters, great fairies and items on the ground of the neighbouring screens move in the margins of the widescreen view. The overworld never stops: the shadows run through scrolls, caves, stairs and dungeons, and what Link left is still alive when he comes back.
+
+- **How a shadow is made.** While the real game is in plain overworld play, each neighbour gets a copy of the game (its own RAM, cartridge RAM, CPU and a "lite" PPU that draws nothing). The stand-in Link is put at the edge facing the target screen and the game is put into its leave-the-room mode; the game then scrolls, loads the screen and spawns its monsters by itself (a diagonal neighbour takes two such steps). The shadow is drawn from the moment it arrives, so its monsters appear with the game's normal spawn smoke at the game's own speed; it then runs in step with the real game, on the thread pool. Only the unseen walk to the screen is hurried (three frames per frame). Its random numbers are reseeded so that it does not move like the real game.
+- **Always running.** The shadows are stepped once per displayed frame in every game mode: while the camera glides, while Link walks into a screen, while he is in a cave, on stairs or in a dungeon. They stand still only while the inventory or the pause is open (the game does too). New shadows can only be made from the real game in plain overworld play; the existing ones go on without it. All shadows are dropped when the overworld is gone (title, file select, game over, saving, the end).
+- **The screen Link leaves.** On a scroll and on every cave, stairs or dungeon entrance the screen he stands on becomes a shadow from exactly the state it was in (monsters, items lying on the ground and their despawn timers carry on; its first picture is already a frame of play, so nothing blinks). Shadows that are still neighbours of the new screen simply go on (nothing respawns); only the missing neighbours get new shadows and the ones now two screens away are dropped. There is never more than one shadow of a screen.
+- **Coming back (hand-off).** When Link walks into a screen with a shadow (by a scroll, or out of a cave, stairs or a dungeon), the shadow's monsters take over from the fresh ones the game loads, so they carry on instead of popping: right after the game has made its own monsters (a couple of frames into its enter-room mode) the shadow's monsters (all per-monster variables) are copied into the game. The game does not draw its monsters while Link walks in (or out of a cave), so until it does the shadow's monsters are drawn over its picture: no blink. Items lying on the ground of that screen, with the despawn timer that went on running while Link was away, are put into free monster slots even when the game's own monsters are of other kinds, so a dropped item can still be picked up when he comes back (as long as the screen stayed a neighbour). Nothing else is copied when the real game's monsters are of kinds the shadow does not have; then they appear as in the original. The shadow is dropped once its screen is the real game's again.
+- **What is drawn.** The sprites of each shadow (monsters, fairies, items) under the game's picture of Link's screen and only on explored screens; the status bar's sprites (the map marker) are never shown; monsters near water reflect in it (the `End` switch applies). During the glide, while Link walks into stairs, a cave or a dungeon, and behind a cave's box (over the kept overworld picture; the screen Link went in from included) the shadows stay drawn and keep moving.
+- **Glow and glitter.** Items lying on neighbouring screens (hearts, rupees, five rupees, fairies, triforce shards, other drops), pond fairies and the flames of guards and cave people glow and glitter like those of Link's own screen (behind a cave's box: the glow only).
+- **The stand-in Link** takes no input and cannot die (his hearts are refilled), cannot take a cave or stairs, and is never drawn. Monster shots are deleted, so nothing flies in a shadow: the monsters roam but do not shoot. Nothing crosses the border: a shadow is a picture of a screen's creatures, the tiles are always the real game's.
+- **Safety net.** A shadow whose game leaves plain play (for example by entering a cave) is dropped from the picture and started again after a pause, up to three times.
+- **Not done yet:** glow and sparkles of moving monsters' effects at night, more shadow screens for the very wide zoom levels (two screens away).
 - **Debugging.** `Page Up` writes `shadow_debug.txt`: the state of each shadow and the objects in its slots.
+
+## 6. Saving
+
+Saving works as in the game (SAVE on the game over screen) plus SAVE AND QUIT in the inventory and `F10`.
+
+- **SAVE AND QUIT.** SELECT in the inventory opens a box in the middle of the window ("ARE YOU SURE YOU WANT TO SAVE AND QUIT?", YES / NO, NO highlighted); left and right pick, A confirms (YES fades to black and saves as usual), B closes it, and the game sees no buttons while it is up (see Menus).
+- **`F10`** saves at once inside a framed box on top of the dimmed game picture (the overworld view, a cave or a dungeon), without the inventory's slide animation.
+- **The fog map.** Discoveries and solved mazes are saved next to the ROM as `<romname>.fog` (per save slot; a different player name in a slot starts a fresh map), only when the game itself saves; discoveries made since the last save are dropped when you load a file or quit without saving (see Fog of war).
+
+## 7. Performance and tools
+
+### Crowded rooms (no flicker, no slowdown)
+Rooms with many enemies keep every sprite and the game's normal speed.
+
+The NES can only draw 8 sprites on one line, so in a room with many enemies and shots the game
+flickers the sprites by rotating which ones are left out; and the game does all its work inside the interrupt that starts every frame, so when a
+frame's work takes longer than a frame the next interrupt is lost and the game runs at half speed. Both are off by default: every sprite of a line is
+drawn (the PPU is told not to leave any out), and when the game is still working at the end of the picture the emulator waits for it (at most 1.5
+frames of CPU time) before the next frame starts, so the game keeps its normal speed. `Insert` switches the original behaviour back on. Nothing
+changes when widescreen is off (`F3`).
+
+### Threads
+The heavy per-pixel passes share up to 8 CPU threads.
+
+The heavy per-pixel work (the terrain and the fog glow, the water: finding it, the mirror axes, the waves and reflections; the night and dungeon light; the fog over the terrain) is shared between up to 8 CPU threads that are created once; the picture is the same with one thread (a build without `std::thread` simply uses one). The environment variable `ZW_THREADS=n` sets the number of threads (`ZW_THREADS=1` turns them off).
+
+### Command line options and debug keys
+
+`--no-wide`, `--no-fog`, `--trace`, `--perf` (shows in the window title, once a second, where the time of a frame goes: the game, the compositor and its stages, the upload to the GPU, the present and the pacing wait; also writes them with a description of the machine - SDL renderer, threads, build type - to `<romname>.perf.txt` next to the ROM), `--verify` (prints, for every screen you enter, how many tiles of the decoded screen differ from the game's live screen); `Home` writes `water_debug.txt` (tile ids and water flags of the current screen), `Page Up` writes `shadow_debug.txt`.

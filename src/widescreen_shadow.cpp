@@ -21,7 +21,7 @@ void Widescreen::drawShadowSprites(Canvas& out, int camX, int camY, int topBand,
             if (i == zelda::kLinkOam0 || i == zelda::kLinkOam1) continue;       // the stand-in Link is not drawn
             const uint8_t* o = &n.ppu.oam[i * 4];
             const int sy = o[0] + 1;
-            if (o[0] >= 0xEF || sy + 16 <= HUD_H) continue;                      // (parked, or the status bar's icons)
+            if (o[0] >= 0xEF || sy + 16 <= HUD_H || hudSpriteEntry(n.ppu.oam, i)) continue;   // (parked, or the status bar's icons and the map marker, which pokes out below the bar)
             drawSpriteAt(n, out, o[1], o[2], o[3], sy, rx, ry, topBand, noFlash, 0, 0);
         }
         if (onlyCurrent) continue;
@@ -36,5 +36,26 @@ void Widescreen::drawShadowSprites(Canvas& out, int camX, int camY, int topBand,
         fxNes = &n; lightPpu = &n.ppu; fxOx = (g->room() & 15) * ROOM_W; fxOy = (g->room() >> 4) * ROOM_H; fxRoom = g->room(); fxIsShadow = true;
         roomWater(out, camX, camY, true, false);
         fxNes = sN; lightPpu = sP; fxOx = sOx; fxOy = sOy; fxRoom = sRoom; fxIsShadow = false;
+    }
+}
+
+// What glows on the neighbouring screens: dropped items and fairies glow and glitter like the ones of Link's own screen, the guard fires and the flames of cave people
+// glow. Light-space = the overworld's world pixels (the same as gatherLights with the screen's origin).
+void Widescreen::gatherShadowLights(int curRoom, int slot, bool sparkle) {
+    if (!shadows || !shadows->enabled || !enabled) return;
+    const unsigned t = dayClock.tick;
+    for (ShadowGame* g : shadows->games()) {
+        if (!g->visible() || g->room() == curRoom) continue;
+        if (fog && !discovered(slot, g->room())) continue;
+        const int ox = (g->room() & 15) * ROOM_W, oy = (g->room() >> 4) * ROOM_H;
+        const Nes& n = g->nes();
+        for (int s = 1; s <= 12; s++) {
+            const int ty = n.ram[zelda::kObjType + s], st = n.ram[zelda::kObjState + s];
+            if (!ty) continue;
+            const float x = (float)(ox + n.ram[zelda::kObjX + s] + 8), y = (float)(oy + n.ram[zelda::kObjY + s] - HUD_H + 8);
+            if (ty == zelda::kTypeGuardFire || ty == zelda::kTypeStandingFire) lightSources.push_back({x, y, 56, 0.9f * lighting::flicker(t, s), 0.0f, 255, 150, 60});
+            else if (ty == zelda::kTypePondFairy) { lightSources.push_back({x, y, 40, 0.5f, 0.0f, 255, 190, 230}); if (sparkle) spawnSparkles(x, y, 0); }
+            else if (ty == zelda::kTypeItem && st) itemGlow(st, x, y, s, sparkle);
+        }
     }
 }

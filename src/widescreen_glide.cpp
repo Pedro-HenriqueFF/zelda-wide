@@ -40,7 +40,7 @@ void Widescreen::renderGlide(Nes& nes, double windowAspect, Canvas& out) {
     const int slot = glideView.slot < 3 ? glideView.slot : 0;
 
     drawWorld(nes, out, camX, camY, slot, FlashEffect());
-    drawShadowSprites(out, camX, camY, topBand, -1, slot);            // the monsters of the screen Link walks into (their shadows stand still while the glide lasts)
+    drawShadowSprites(out, camX, camY, topBand, -1, slot);            // the monsters of the screen Link walks into (they keep moving while the glide lasts)
     // Link walks the last stretch: at the end of the glide he is exactly where the game put him.
     const int ox = (glideView.room & 15) * ROOM_W + (int)std::lround((glideAx - glideBx) * (1.0 - f));
     const int oy = (glideView.room >> 4) * ROOM_H + (int)std::lround((glideAy - glideBy) * (1.0 - f));
@@ -62,6 +62,7 @@ void Widescreen::renderGlide(Nes& nes, double windowAspect, Canvas& out) {
     }
     lightLinkX = (float)(ox + glideView.linkX + 8); lightLinkY = (float)(oy + glideView.linkY - HUD_H + 8); lightSources.clear(); sparkles.clear(); lightPpu = &nes.ppu; candleHeld = nes.ram[kSelectedItem] == kItemSlotCandle ? nes.ram[kInvCandle] : 0;
     if (lighting) gatherStaticLights(nes, glideView.room, slot, false, (glideView.room & 15) * ROOM_W, (glideView.room >> 4) * ROOM_H);   // (the statues' glow does not go out)
+    if (lighting) gatherShadowLights(-1, slot, true);                  // (the items and fairies of the neighbouring screens glow and glitter)
     steadyLinkX = lightLinkX; steadyLinkY = lightLinkY; steadyValid = true;   // (Link's sight walks with him)
     applyClouds(out, topBand, camX, camY, cx, cy);                    // the clouds carry on drifting while Link walks into the next screen
     if (hudOverlay) addHudOverlay(nes, glideView, slot);

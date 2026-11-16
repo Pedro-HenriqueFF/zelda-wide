@@ -146,6 +146,8 @@ public:
     bool roomItemTaken(Nes& nes);   // the room's item flag is set (a triforce shard or heart container that was taken stays dark)
     int lastOverRoom = -1; bool cellarBlackSeen = false;               // the last overworld screen (for the statues' glow while a dungeon is entered); a cellar's own picture has appeared
     void gatherWareLights(Nes& nes, int ox, int oy, bool cave);
+    void itemGlow(int st, float x, float y, int s, bool sparkle);                      // glow (and glitter) of an item on the ground
+    void gatherShadowLights(int curRoom, int slot, bool sparkle);                      // N8: glow and glitter of the items, fairies and flames on the shadow games' screens
     int roomAge = 0, roomPlayAge = 0, lightSpace = -1, sparkOx = 0, sparkOy = 0;        // frames on this screen; 0 overworld / 1 cave / 2 dungeon; where the sparkles' space starts
     int slideX = 0, slideY = 0, prevSx = 0, prevOy = 0;                 // how far the room has slid (mode 7), counted frame by frame
     void caveLight(Nes& nes, uint32_t* pix, int w, int h, int top, int bottom, int linkX = -1, int linkY = -1);   // (linkX/Y: Link's place when the game has already moved him: the cellar exit)

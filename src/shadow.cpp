@@ -68,17 +68,33 @@ ShadowGame::HandOff ShadowGame::handOffTo(Nes& real) const {
     int shadowMonsters = 0, realMonsters = 0;                         // (the game has not made the screen's monsters yet: nothing to take over, try again later)
     for (int s = 1; s <= 12; s++) { const uint8_t a = game->ram[kObjType + s], b = real.ram[kObjType + s]; shadowMonsters += a && a < kTypeFirstProjectile; realMonsters += b && b < kTypeFirstProjectile; }
     if (shadowMonsters > 0 && realMonsters == 0) return HandOff::Wait;
-    for (int t = 0; t < 256; t++) if (want[t] > have[t]) return HandOff::No;
+    for (int t = 0; t < 256; t++) if (want[t] > have[t]) return carryItems(real) ? HandOff::Done : HandOff::No;     // (other monsters: the game's own stay, but the items on the ground come along)
     for (uint16_t base : kHandOffArrays) for (int s = 1; s <= 12; s++) real.ram[base + s] = game->ram[base + s];
     for (uint16_t a : kHandOffBytes) real.ram[a] = game->ram[a];
     for (int i = 0; i < kRoomObjTemplateLen; i++) real.ram[kRoomObjTemplateType + i] = game->ram[kRoomObjTemplateType + i];
     return HandOff::Done;
 }
 
-bool ShadowGame::captureFrom(const Nes& real, uint32_t seed) {
+// The items lying on the ground of the shadow's screen (type $60, slots 1-12) are moved into free monster slots of the real game, with all their variables (the despawn
+// timer included): an item dropped before Link left can still be picked up when he comes back. False: no item, or no free slot.
+bool ShadowGame::carryItems(Nes& real) const {
+    bool any = false;
+    for (int s = 1; s <= 12; s++) {
+        if (game->ram[kObjType + s] != kTypeItem) continue;
+        for (int t = 1; t <= 12; t++) {
+            if (real.ram[kObjType + t] != 0) continue;
+            for (uint16_t base : kHandOffArrays) real.ram[base + t] = game->ram[base + s];
+            any = true; break;
+        }
+    }
+    return any;
+}
+
+// `room`: the screen being left (for a warp the real game's RoomId may already be the cellar's). The game has only just switched to mode 6 (scroll) or $10 (cave,
+// stairs, dungeon): the monsters are as they were.
+bool ShadowGame::captureFrom(const Nes& real, int room, uint32_t seed) {
     st = State::Idle; target = -1;
-    const int room = real.ram[kRoomId];
-    if (real.ram[kGameMode] != kModeLeave || real.ram[kCurLevel] != 0 || real.cpu.inNmi() || room > 0x7F || room == kForestMazeRoom || room == kMountainMazeRoom) return false;
+    if ((real.ram[kGameMode] != kModeLeave && real.ram[kGameMode] != kModeStairs) || real.cpu.inNmi() || room < 0 || room > 0x7F || room == kForestMazeRoom || room == kMountainMazeRoom) return false;
     if (!game) game = std::make_unique<Nes>();
     game->cloneFrom(real, true);
     game->lagFree = true;
@@ -89,12 +105,14 @@ bool ShadowGame::captureFrom(const Nes& real, uint32_t seed) {
     if (!any) r[kRandom] = 1;
     hearts = r[kHeartValues]; heartPart = r[kHeartPartial];
     r[kGameMode] = kModePlay; r[kGameSubmode] = 0; r[kIsUpdatingMode] = 1;      // back into play (mode 6 had only just begun): the monsters carry on where they were
+    r[kCurLevel] = 0; r[kRoomId] = (uint8_t)room;                                // (a warp had already set the level / the cellar's room)
     r[kObjState] = 0; r[kObjShoveDir] = 0; r[kObjShoveDistance] = 0; r[kObjInvincibilityTimer] = 0; r[0x0F] = 0;
     placeLinkNeutral();
     target = room; dxs = dys = 0; attempts = kMaxAttempts; failedFrames = 0;   // (no retry: there is nothing to walk to)
     hopCount = hopIdx = 0; hopIssued = false; settle = 0; frameCount = 0;
     st = State::Ready;
     game->ppu.lineCtrl[100] = game->ppu.ctrl;
+    stepFrame();                                                      // (the sprites the game hid in mode 6 / $10 are drawn again: no blink on the first frame)
     return true;
 }
 
@@ -151,7 +169,7 @@ void ShadowGame::stepFrame() {
 
 void ShadowSet::clear() {
     for (ShadowGame& g : pool) g.reset();
-    active.clear(); base = -1; bridge = nullptr; bridgeHold = 0; departed = false;   // (an armed hand-off stays armed: it is for the screen the real game is loading)
+    active.clear(); base = -1; bridge = nullptr; bridgeHold = 0; departed = false; wasOverworldPlay = false;   // (an armed hand-off stays armed: it is for the screen the real game is loading)
 }
 
 ShadowGame* ShadowSet::alloc() {
@@ -194,9 +212,10 @@ void ShadowSet::stepAll() {
     par::forRange(0, n, 1, [&](int a, int b) {
         for (int i = a; i < b; i++) {
             ShadowGame& g = *active[i];
-            for (int s = 0; s < kSpinStepsPerFrame; s++) {
+            for (int s = 0; s < kSpinStepsPerFrame; s++) {               // (only the walk to the screen, which nobody sees, is hurried: the arrival and everything after runs at the game's speed)
+                const bool spinning = g.state() == ShadowGame::State::SpinUp;
                 g.stepFrame();
-                if (g.state() != ShadowGame::State::SpinUp && g.state() != ShadowGame::State::Settling) break;
+                if (!spinning || g.state() != ShadowGame::State::SpinUp) break;
             }
         }
     });
@@ -204,36 +223,63 @@ void ShadowSet::stepAll() {
 
 void ShadowSet::animate() { if (enabled) stepAll(); }
 
+// Modes in which the overworld is gone for good (title, file select, game over / continue, saving, the end): the shadows are dropped.
+static bool worldGone(uint8_t mode) { return mode <= kModeFileSelect || mode == kModeContinue || mode == kModeSave || mode >= kModeDeath; }
+
 void ShadowSet::update(Nes& real) {
-    if (!enabled || real.ram[kCurLevel] != 0) { handOffArmed = false; if (!active.empty() || base >= 0) clear(); return; }
+    if (!enabled) { handOffArmed = false; lastMode = -1; if (!active.empty() || base >= 0) clear(); return; }
     const uint8_t mode = real.ram[kGameMode];
-    if (mode == kModeLeave) {                                         // Link is leaving the screen: it carries on as a shadow from exactly this state
-        if (!departed) {
-            departed = true;
-            ShadowGame* g = alloc();
-            if (g && g->captureFrom(real, (uint32_t)(real.cpu.totalCycles >> 5) + (uint32_t)real.ram[kRoomId] * 131u)) {
-                for (ShadowGame* o : active) if (o->room() == g->room()) o->reset();      // (never two shadows of a screen)
-                active.erase(std::remove_if(active.begin(), active.end(), [](ShadowGame* o) { return o->state() == ShadowGame::State::Idle; }), active.end());
-                active.push_back(g);
-            }
-        }
-    } else departed = false;
-    if (bridgeHold > 0 && --bridgeHold == 0 && bridge) { bridge->reset(); bridge = nullptr; }
+    const int level = real.ram[kCurLevel];
+    if (worldGone(mode)) { handOffArmed = false; lastMode = -1; wasOverworldPlay = false; if (!active.empty() || base >= 0) clear(); return; }
+    // The overworld goes on in every other mode: scrolls, caves, stairs, dungeons, the walk in and out. The shadows are stepped once per frame like the real game would.
+    if (mode == kModeLeave && level == 0) {                           // Link is leaving the screen: it carries on as a shadow from exactly this state
+        if (!departed) { departed = true; capture(real, real.ram[kRoomId]); }
+    } else if (mode == kModeStairs && wasOverworldPlay && base >= 0) {   // a cave, stairs or a dungeon entrance: the screen Link stood on carries on (RoomId may already be the cellar's)
+        if (!departed) { departed = true; capture(real, base); }
+    } else if (mode != kModeStairs && mode != kModeLeave) departed = false;
+    if (mode == kModeEnter && lastMode != kModeEnter && !handOffArmed) armHandOff(real);   // (a way back from a cave, stairs or a dungeon: the scroll's own entry is armed by main.cpp)
+    lastMode = mode;
+    if (bridgeHold > 0 && --bridgeHold == 0 && bridge) { dropBridge(); }
     if (handOffArmed) {                                               // Link has walked into a screen: its shadow's monsters replace the fresh ones once the game has made them
         if (mode == kModeEnter && real.ram[kGameSubmode] == 0) entryFrames++;
         // (the first frame seen in mode 4 submode 0 comes BEFORE InitMode_EnterRoom, which clears $0300-$051F and makes the monsters; the second comes after it)
         if ((mode == kModeEnter && entryFrames >= 2) || mode == kModePlay) {
             const ShadowGame::HandOff r = tryHandOff(real);
-            if (r != ShadowGame::HandOff::Wait || mode == kModePlay) { handOffArmed = false; if (r != ShadowGame::HandOff::Done) { bridge = nullptr; } }
+            if (r != ShadowGame::HandOff::Wait || mode == kModePlay) { handOffArmed = false; if (r != ShadowGame::HandOff::Done) retire(real.ram[kRoomId]); }
         }
     }
-    const bool plain = mode == kModePlay && real.ram[kMenuState] == 0 && real.ram[kPaused] == 0;
-    if (!plain) return;                                               // scrolling, caves, the inventory: the shadows wait
-    if ((int)real.ram[kRoomId] != base) reconcile(real);
-    if (bridge && bridgeHold == 0) bridgeHold = kBridgeHold;
+    const bool plain = mode == kModePlay && level == 0 && real.ram[kMenuState] == 0 && real.ram[kPaused] == 0;
+    wasOverworldPlay = mode == kModePlay && level == 0;
+    if (plain && (int)real.ram[kRoomId] != base) reconcile(real);
+    if (mode == kModeLeaveCave && level == 0 && !bridge) for (ShadowGame* g : active) if (g->visible() && g->room() == (int)real.ram[kRoomId]) bridge = g;   // (the overworld comes back without its monsters: the screen's shadow stands in for them)
+    if (plain && bridge && bridgeHold == 0) bridgeHold = kBridgeHold;
+    if (real.ram[kMenuState] != 0 || real.ram[kPaused] != 0) return;  // the inventory / pause: the game stands still, so do the shadows
     stepAll();
-    for (ShadowGame* g : active)                                       // (a failed shadow gets another go after a pause, a few times)
-        if (g->state() == ShadowGame::State::Failed && g->failedFor() >= ShadowGame::kRetryDelay) g->retry(real, (uint32_t)(real.cpu.totalCycles >> 3) + (uint32_t)g->room() * 31u);
+    if (plain)
+        for (ShadowGame* g : active)                                   // (a failed shadow gets another go after a pause, a few times)
+            if (g->state() == ShadowGame::State::Failed && g->failedFor() >= ShadowGame::kRetryDelay) g->retry(real, (uint32_t)(real.cpu.totalCycles >> 3) + (uint32_t)g->room() * 31u);
+}
+
+// The screen being left (`room`) goes on as a shadow; there is never more than one shadow of a screen.
+void ShadowSet::capture(const Nes& real, int room) {
+    ShadowGame* g = alloc();
+    if (!g || !g->captureFrom(real, room, (uint32_t)(real.cpu.totalCycles >> 5) + (uint32_t)room * 131u)) return;
+    for (ShadowGame* o : active) if (o != g && o->room() == g->room()) o->reset();
+    active.erase(std::remove_if(active.begin(), active.end(), [](ShadowGame* o) { return o->state() == ShadowGame::State::Idle; }), active.end());
+    active.push_back(g);
+}
+
+// Nothing could be taken over from the shadow of the screen Link is in: it is dropped (two simulations of one screen would run side by side).
+void ShadowSet::retire(int room) {
+    for (ShadowGame* g : active) if (g->room() == room) { g->reset(); if (g == bridge) bridge = nullptr; }
+    active.erase(std::remove_if(active.begin(), active.end(), [](ShadowGame* o) { return o->state() == ShadowGame::State::Idle; }), active.end());
+}
+
+// The entered screen's shadow has done its bridging: the real game's monsters are the only ones now.
+void ShadowSet::dropBridge() {
+    bridge->reset();
+    active.erase(std::remove(active.begin(), active.end(), bridge), active.end());
+    bridge = nullptr;
 }
 
 ShadowGame::HandOff ShadowSet::tryHandOff(Nes& real) {
