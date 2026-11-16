@@ -5,7 +5,6 @@
 A from-scratch NES emulator (6502, MMC1, PPU) with an SDL2 front-end, built to play *The Legend of Zelda* with a **widescreen overworld**,
 **fog of war** and a lot of extra polish, because owning the renderer makes it possible. The game itself runs unmodified underneath.
 
-<!-- Add a screenshot: put it in docs/images/ and uncomment the next line.-->
 ![Zelda Wide](docs/images/screenshot.png)
 
 > **You must supply your own ROM.** No game data is included or needed to build. Target ROM: `Legend of Zelda, The (U) (PRG0) [!].nes`.

@@ -39,7 +39,7 @@ The test executables are linked with a 32 MB stack (Windows' default 1 MB is too
 **Linux / WSL:** `tools/check.sh` builds everything (a fast `-O2` build by default, about 20 s for `test_wide`; with `--san`, and always with `--zip N`, with
 AddressSanitizer/UBSan), runs `test_core` (CPU, MMC1, PPU, shadow games), `test_world` (overworld decoder, camera) and `test_wide` (renderer, fog, HUD, caves,
 sprites; on a synthetic ROM with faked game RAM), syntax-checks `main.cpp` against a stub SDL and checks that CMake lists every source. It only recompiles what
-changed (a no-change run takes a few seconds). `tools/check.sh --zip N` also packages the project into `$ZW_ZIP_DIR` (default `./dist`); `--zip-only N` packages
+changed (a no-change run takes a few seconds). `tools/check.sh --zip N` also packages the project into `$ZW_ZIP_DIR` (default `./dist`; only project files: never `build/`, `third_party/`, `dist/`, `.git`, ROMs, saves or earlier zips); `--zip-only N` packages
 without running the checks (for documentation-only changes). With CMake: `cmake --build build && ctest --test-dir build --output-on-failure`.
 
 ## Updating the project folder from a zip
