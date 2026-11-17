@@ -182,6 +182,9 @@ public:
     // Tell the compositor that emulation was fast-forwarded, so the previous frame's state is stale.
     void resetLag() { lagReset = true; }
     int cameraX() const { return smoothX; }  int cameraY() const { return smoothY; }   // (the eased camera centre in world pixels)
+    void drawFadedSprite(Nes& nes, Canvas& out, uint8_t tile, int sx, int sy, int fade256) {          // (tests: one sprite at brightness fade256/256)
+        const FlashEffect none; spriteFade = fade256; drawSpriteAt(nes, out, tile, 0, sx, sy, 0, 0, 0, none, 0, 0); spriteFade = 256;
+    }
     bool backdropKept() const { return haveBackdrop; }  int backdropCameraX() const { return backdropCamX; }   // (the picture kept behind a cave's box, and the camera it was drawn with)
     void snapCamera() { smoothValid = false; }     // next world frame uses the exact camera position (no easing)
 
@@ -279,6 +282,8 @@ private:
     //  - hideSprite[i]: OAM entry i is not drawn from the game's picture (Link's stale sprites after a cave; a sprite whose X
     //    wrapped around the 8-bit OAM range and so shows up at the opposite border);
     //  - trueSprites: those wrapped entries, to be drawn at the position the game meant (outside the picture's border).
+    int spriteFade = 256;               // 0..256: brightness of the sprites drawn by drawSpriteAt (the shadows' monsters fade with the game's picture)
+    int owRefLuma = 0;                  // palette brightness of the last frame of overworld play (the fade of stairs and caves is measured against it)
     bool hideSprite[64] = {};
     struct TrueSprite { int oam, sx, sy; };
     TrueSprite trueSprites[64];

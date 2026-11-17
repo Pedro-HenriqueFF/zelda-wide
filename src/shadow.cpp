@@ -1,5 +1,6 @@
 #include "shadow.h"
 #include <algorithm>
+#include <cmath>
 #include <cstdlib>
 #include "parallel.h"
 #include "zelda_ram.h"
@@ -31,7 +32,7 @@ bool ShadowGame::start(const Nes& real, int dx, int dy, uint32_t seed) {
     bool any = false;
     for (int i = 0; i < kRandomLen; i++) { x = x * 1664525u + 1013904223u; r[kRandom + i] = (uint8_t)(x >> 24); any = any || r[kRandom + i]; }
     if (!any) r[kRandom] = 1;
-    hearts = r[kHeartValues]; heartPart = r[kHeartPartial];
+    hearts = kUnkillable; heartPart = kUnkillable;
     hopCount = 0; hopIdx = 0;
     if (dx) { hopDir[hopCount] = dx > 0 ? 1 : 2; hopRoom[hopCount++] = (uint8_t)((from & 0xF0) + (from & 15) + dx); }
     if (dy) { hopDir[hopCount] = dy > 0 ? 4 : 8; hopRoom[hopCount++] = (uint8_t)t; }
@@ -52,12 +53,12 @@ bool ShadowGame::retry(const Nes& real, uint32_t seed) {
     if (attempts >= kMaxAttempts) return false;
     const int a = attempts + 1;
     const int oldTarget = target;
-    if (!start(real, dxs, dys, seed)) { st = State::Failed; target = oldTarget; return false; }
+    if (!start(real, dxs, dys, seed)) { st = State::Failed; lastFail = "start refused"; target = oldTarget; return false; }
     attempts = a;
     return true;
 }
 
-ShadowGame::HandOff ShadowGame::handOffTo(Nes& real) const {
+ShadowGame::HandOff ShadowGame::handOffTo(Nes& real) {
     if (!visible() || !game || real.ram[kRoomId] != target || real.ram[kCurLevel] != 0) return HandOff::No;
     int have[256] = {}, want[256] = {};                               // the real game's monsters must be kinds the shadow has too (else the screen is not the same: leave it)
     for (int s = 1; s <= 12; s++) {
@@ -72,6 +73,8 @@ ShadowGame::HandOff ShadowGame::handOffTo(Nes& real) const {
     for (uint16_t base : kHandOffArrays) for (int s = 1; s <= 12; s++) real.ram[base + s] = game->ram[base + s];
     for (uint16_t a : kHandOffBytes) real.ram[a] = game->ram[a];
     for (int i = 0; i < kRoomObjTemplateLen; i++) real.ram[kRoomObjTemplateType + i] = game->ram[kRoomObjTemplateType + i];
+    for (int i = 0; i < kRandomLen; i++) real.ram[kRandom + i] = game->ram[kRandom + i];     // (the same dice and the same Link position: the shadow that stands in for a few more frames and the game then go on the same way)
+    followRealLink(real);
     return HandOff::Done;
 }
 
@@ -90,20 +93,21 @@ bool ShadowGame::carryItems(Nes& real) const {
     return any;
 }
 
-// `room`: the screen being left (for a warp the real game's RoomId may already be the cellar's). The game has only just switched to mode 6 (scroll) or $10 (cave,
-// stairs, dungeon): the monsters are as they were.
+// `room`: the screen being left (for a warp the real game's RoomId may already be the cellar's). The game has only just switched to mode 6 (scroll) or, after the
+// walk of mode $10, to the cave / cellar / level loading: the monsters are as they were (their RAM is cleared only when the next room is laid out).
 bool ShadowGame::captureFrom(const Nes& real, int room, uint32_t seed) {
     st = State::Idle; target = -1;
-    if ((real.ram[kGameMode] != kModeLeave && real.ram[kGameMode] != kModeStairs) || real.cpu.inNmi() || room < 0 || room > 0x7F || room == kForestMazeRoom || room == kMountainMazeRoom) return false;
+    if (real.cpu.inNmi() || room < 0 || room > 0x7F || room == kForestMazeRoom || room == kMountainMazeRoom) return false;
     if (!game) game = std::make_unique<Nes>();
     game->cloneFrom(real, true);
     game->lagFree = true;
     uint8_t* r = game->ram;
+    wrng = seed * 747796405u + 2891336453u;
     uint32_t x = seed * 2654435761u + 12345u;
     bool any = false;
     for (int i = 0; i < kRandomLen; i++) { x = x * 1664525u + 1013904223u; r[kRandom + i] = (uint8_t)(x >> 24); any = any || r[kRandom + i]; }
     if (!any) r[kRandom] = 1;
-    hearts = r[kHeartValues]; heartPart = r[kHeartPartial];
+    hearts = kUnkillable; heartPart = kUnkillable;
     r[kGameMode] = kModePlay; r[kGameSubmode] = 0; r[kIsUpdatingMode] = 1;      // back into play (mode 6 had only just begun): the monsters carry on where they were
     r[kCurLevel] = 0; r[kRoomId] = (uint8_t)room;                                // (a warp had already set the level / the cellar's room)
     r[kObjState] = 0; r[kObjShoveDir] = 0; r[kObjShoveDistance] = 0; r[kObjInvincibilityTimer] = 0; r[0x0F] = 0;
@@ -129,6 +133,34 @@ void ShadowGame::issueHop() {
 
 void ShadowGame::placeLinkNeutral() {
     game->ram[kObjX] = kCenterX; game->ram[kObjY] = kCenterY; game->ram[kObjGridOffset] = 0;
+    lx = wx = kCenterX; ly = wy = kCenterY; wpause = 0; wanders = true;
+}
+
+// The stand-in Link strolls about the screen (the monsters of Zelda 1 steer towards the player: with a Link who never moves they all gathered around him). He keeps out of
+// reach of the items on the ground (the game lets Link take an item within 8 px, Z_01.asm 4422-4438: a shadow must not pick them up before the real Link comes back).
+void ShadowGame::wanderLink() {
+    uint8_t* r = game->ram;
+    auto rnd = [&]() { wrng = wrng * 1664525u + 1013904223u; return (int)(wrng >> 16); };
+    auto safe = [&](float x, float y) {
+        for (int s = 1; s <= 0x13; s++)
+            if (r[kObjType + s] == kTypeItem && std::fabs(x - r[kObjX + s]) < kItemClear && std::fabs(y + 3 - r[kObjY + s]) < kItemClear) return false;
+        return true;
+    };
+    auto newGoal = [&]() { wx = (float)(kWanderX0 + rnd() % (kWanderX1 - kWanderX0)); wy = (float)(kWanderY0 + rnd() % (kWanderY1 - kWanderY0)); };
+    if (wpause > 0) wpause--;
+    else {
+        const float dx = wx - lx, dy = wy - ly, d = std::sqrt(dx * dx + dy * dy);
+        if (d < 1.5f) { wpause = rnd() % kWanderPause; newGoal(); }
+        else if (safe(lx + dx / d * kWanderSpeed, ly + dy / d * kWanderSpeed)) { lx += dx / d * kWanderSpeed; ly += dy / d * kWanderSpeed; }
+        else newGoal();                                                                        // (an item lies in the way)
+    }
+    for (int k = 0; k < 12 && !safe(lx, ly); k++) { lx = (float)(kWanderX0 + rnd() % (kWanderX1 - kWanderX0)); ly = (float)(kWanderY0 + rnd() % (kWanderY1 - kWanderY0)); }
+    r[kObjX] = (uint8_t)lx; r[kObjY] = (uint8_t)ly; r[kObjGridOffset] = 0;
+}
+
+// The shadow stands in for the real game's monsters for a few more frames (the hand-off): its Link stands where the real one does.
+void ShadowGame::followRealLink(const Nes& real) {
+    wanders = false; game->ram[kObjX] = real.ram[kObjX]; game->ram[kObjY] = real.ram[kObjY];
 }
 
 void ShadowGame::stepFrame() {
@@ -142,22 +174,23 @@ void ShadowGame::stepFrame() {
         const uint8_t mode = r[kGameMode];
         if (!hopIssued) {
             if (mode == kModePlay) { issueHop(); hopIssued = true; hopFrames = 0; }
-            else if (++hopFrames > kHopTimeout) st = State::Failed;
+            else if (++hopFrames > kHopTimeout) { st = State::Failed; lastFail = "timeout before the hop"; }
         } else if (mode == kModePlay) {                               // the game has scrolled and loaded the screen
-            if (r[kRoomId] != hopRoom[hopIdx]) st = State::Failed;
+            if (r[kRoomId] != hopRoom[hopIdx]) { st = State::Failed; lastFail = "wrong screen after a hop"; }
             else {
                 hopIdx++; hopIssued = false; hopFrames = 0;
                 if (hopIdx >= hopCount) { st = State::Settling; settle = 0; placeLinkNeutral(); }
             }
-        } else if (++hopFrames > kHopTimeout) st = State::Failed;
+        } else if (++hopFrames > kHopTimeout) { st = State::Failed; lastFail = "timeout during a hop"; }
     }
     if (st == State::Failed) return;
     if (st == State::Settling || st == State::Ready) r[kUndergroundExitType] = 1;     // (the stand-in Link must not take a cave or stairs under his feet: CheckWarps returns at once, Z_05.asm 7250)
+    if (wanders && (st == State::Settling || st == State::Ready) && !n.cpu.inNmi()) wanderLink();
     n.runFrame();
     // Nothing flies in a shadow: the monsters' shots are deleted (a shot spawned this frame is drawn once at most) and the picture's 8x16 flag is kept for the drawing.
     for (int slot = 1; slot <= 12; slot++) if (r[kObjType + slot] >= kTypeFirstProjectile && r[kObjType + slot] <= kTypeLastProjectile) r[kObjType + slot] = 0;
     n.ppu.lineCtrl[100] = n.ppu.ctrl;
-    if ((st == State::Settling || st == State::Ready) && (r[kGameMode] != kModePlay || r[kRoomId] != target)) st = State::Failed;     // (it went somewhere it should not: not drawn any more)
+    if ((st == State::Settling || st == State::Ready) && (r[kGameMode] != kModePlay || r[kRoomId] != target)) { st = State::Failed; lastFail = r[kGameMode] != kModePlay ? "left play mode" : "left its screen"; }     // (it went somewhere it should not: not drawn any more)
     if (st == State::Ready || st == State::Settling) {                                              // (the picture of the monsters: the stand-in Link is left out)
         n.ppu.oam[zelda::kLinkOam0 * 4] = n.ppu.oam[zelda::kLinkOam1 * 4] = 0xFF;
         n.ppu.unlimitedSprites = true; n.ppu.buildSpriteLayer();
@@ -169,7 +202,7 @@ void ShadowGame::stepFrame() {
 
 void ShadowSet::clear() {
     for (ShadowGame& g : pool) g.reset();
-    active.clear(); base = -1; bridge = nullptr; bridgeHold = 0; departed = false; wasOverworldPlay = false;   // (an armed hand-off stays armed: it is for the screen the real game is loading)
+    active.clear(); base = -1; bridge = nullptr; bridgeHold = 0; departed = false; walking = false; wasOverworldPlay = false;   // (an armed hand-off stays armed: it is for the screen the real game is loading)
 }
 
 ShadowGame* ShadowSet::alloc() {
@@ -231,12 +264,16 @@ void ShadowSet::update(Nes& real) {
     const uint8_t mode = real.ram[kGameMode];
     const int level = real.ram[kCurLevel];
     if (worldGone(mode)) { handOffArmed = false; lastMode = -1; wasOverworldPlay = false; if (!active.empty() || base >= 0) clear(); return; }
-    // The overworld goes on in every other mode: scrolls, caves, stairs, dungeons, the walk in and out. The shadows are stepped once per frame like the real game would.
+    // Inside a dungeon nothing of the overworld shows and the game makes its monsters afresh when Link comes out: the shadows only live through the walk in.
+    if (level != 0 && mode != kModeStairs) { handOffArmed = false; lastMode = -1; wasOverworldPlay = false; if (!active.empty() || base >= 0) clear(); return; }
+    // The overworld goes on in every other mode: scrolls, caves, stairs, the walk in and out. The shadows are stepped once per frame like the real game would.
     if (mode == kModeLeave && level == 0) {                           // Link is leaving the screen: it carries on as a shadow from exactly this state
         if (!departed) { departed = true; capture(real, real.ram[kRoomId]); }
-    } else if (mode == kModeStairs && wasOverworldPlay && base >= 0) {   // a cave, stairs or a dungeon entrance: the screen Link stood on carries on (RoomId may already be the cellar's)
-        if (!departed) { departed = true; capture(real, base); }
-    } else if (mode != kModeStairs && mode != kModeLeave) departed = false;
+    } else if (mode != kModeLeave) departed = false;
+    if (mode == kModeStairs) { if (wasOverworldPlay && base >= 0) walking = true; }       // a cave, stairs or a dungeon entrance: Link walks in (the real game's monsters still move)
+    else if (walking) {                                               // the walk is over: the screen Link stood on carries on from this very state (RoomId may already be the cellar's)
+        walking = false; if (level == 0 && base >= 0) capture(real, base);
+    }
     if (mode == kModeEnter && lastMode != kModeEnter && !handOffArmed) armHandOff(real);   // (a way back from a cave, stairs or a dungeon: the scroll's own entry is armed by main.cpp)
     lastMode = mode;
     if (bridgeHold > 0 && --bridgeHold == 0 && bridge) { dropBridge(); }
@@ -302,6 +339,7 @@ bool ShadowSet::dump(const char* path) const {
     for (const ShadowGame* g : active) {
         const Nes& n = g->nes();
         std::fprintf(f, "\nshadow of screen %02X: state %d, %d frames, game mode %02X sub %02X, room %02X\n", g->room(), (int)g->state(), g->frames(), n.ram[kGameMode], n.ram[kGameSubmode], n.ram[kRoomId]);
+        if (g->attemptsMade() || g->lastFailure()) std::fprintf(f, "  attempts %d, last failure: %s\n", g->attemptsMade(), g->lastFailure() ? g->lastFailure() : "none");
         for (int slot = 1; slot <= 0x13; slot++)
             if (n.ram[kObjType + slot]) std::fprintf(f, "  slot %02X type %02X at (%d,%d) dir %d state %02X\n", slot, n.ram[kObjType + slot], n.ram[kObjX + slot], n.ram[kObjY + slot], n.ram[kObjDir + slot], n.ram[kObjState + slot]);
     }

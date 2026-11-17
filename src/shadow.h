@@ -20,6 +20,9 @@ public:
     static constexpr int kHopTimeout = 900;       // frames a hop may take (a scroll is ~64 frames, loading ~60 more)
     static constexpr int kMaxAttempts = 3, kRetryDelay = 120;
     static constexpr int kSettleFrames = 120;     // frames after arriving (monsters poof in, then roam)
+    static constexpr int kWanderX0 = 0x28, kWanderX1 = 0xD0, kWanderY0 = 0x6D, kWanderY1 = 0xBD, kWanderPause = 90;   // where the stand-in Link strolls (ObjX / ObjY)
+    static constexpr float kWanderSpeed = 1.0f, kItemClear = 14.0f;
+    static constexpr uint8_t kUnkillable = 0xFF;  // HeartValues / HeartPartial of the stand-in Link: full, many hearts (a hit can never kill him)
 
     ShadowGame() = default;                       // (the Nes is made when the shadow starts: a disabled feature costs no memory)
 
@@ -33,6 +36,10 @@ public:
     bool visible() const { return st == State::Settling || st == State::Ready; }   // (drawn: from the moment it has arrived on its screen, so the monsters' spawn smoke is seen)
     int  room() const { return target; }          // the screen this shadow lives on
     int  frames() const { return frameCount; }
+    int  attemptsMade() const { return attempts; }
+    const char* lastFailure() const { return lastFail; }      // why the shadow failed the last time (for shadow_debug.txt)
+    void followRealLink(const Nes& real);          // its stand-in Link stops strolling and stands where the real Link does (the hand-off)
+    bool carryItems(Nes& real) const;
     Nes& nes() { return *game; }
     const Nes& nes() const { return *game; }
     bool retry(const Nes& real, uint32_t seed);   // a failed shadow starts again (at most kMaxAttempts times for one set of shadows)
@@ -42,10 +49,9 @@ public:
     // Hand-off: Link has walked into this shadow's screen and the real game has just loaded it with fresh monsters: the shadow's monsters (slots 1-12 and their variables)
     // replace them, so what was seen in the margin goes on instead of popping. Only when the real game's monsters are kinds the shadow has too. False: nothing copied.
     enum class HandOff { Done, Wait, No };        // Done: copied; Wait: the real game has not made its monsters yet; No: nothing to take over (other kinds, not on this screen)
-    HandOff handOffTo(Nes& real) const;
+    HandOff handOffTo(Nes& real);
     // The screen Link is leaving (the game has just entered its leave-the-room mode 6, the monsters are as they were): a shadow that carries on from exactly that state.
     bool captureFrom(const Nes& real, int room, uint32_t seed);
-    bool carryItems(Nes& real) const;             // items on the ground of this screen into free slots of the real game
     void adopt(const Nes& src, int room);         // a ready shadow that is a plain copy of `src` standing on `room` (tests of the drawing)
 
 private:
@@ -58,6 +64,10 @@ private:
     uint8_t hearts = 0, heartPart = 0;
     void issueHop();
     void placeLinkNeutral();
+    void wanderLink();
+    float lx = 0, ly = 0, wx = 0, wy = 0;   // the stand-in Link's place and where he strolls to
+    int wpause = 0; bool wanders = false; uint32_t wrng = 1;
+    const char* lastFail = nullptr;
 };
 
 // The shadows around the real game's room (up to 8 neighbours; the screen Link has just left is one of them).
@@ -80,6 +90,8 @@ public:
     void armHandOff(const Nes& real);
     bool handOffPending() const { return handOffArmed; }
     const ShadowGame* bridgeGame() const { return bridge; }
+    // The first picture of plain play after a walk in has no monsters yet either (the game draws them one frame later): the bridge is still drawn for it.
+    bool bridgeShowsInPlay() const { return bridge && bridgeHold == kBridgeHold - 1; }
     ShadowGame::HandOff tryHandOff(Nes& real);
     bool handOff(Nes& real) { return tryHandOff(real) == ShadowGame::HandOff::Done; }
     bool dump(const char* path) const;            // shadow_debug.txt: per shadow its state and the monsters/items in its object slots
@@ -87,7 +99,7 @@ public:
     ShadowGame pool[12];
     std::vector<ShadowGame*> active;
     int base = -1;
-    bool handOffArmed = false, departed = false, wasOverworldPlay = false;
+    bool handOffArmed = false, departed = false, wasOverworldPlay = false, walking = false;
     int lastMode = -1;
     int entryFrames = 0, bridgeHold = 0;
     ShadowGame* bridge = nullptr;

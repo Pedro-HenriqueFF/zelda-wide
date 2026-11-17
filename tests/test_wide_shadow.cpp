@@ -93,7 +93,28 @@ void section32(Ctx& t) {
         set.bridge = nullptr; CHECK_EQ(differing(enter, picture(&set)), (size_t)0);
         set.bridge = &set.pool[1]; setState(5, room); frames(m, 2, aspect);          // (in play the game's own picture shows its monsters: the bridge is not drawn)
         const std::vector<uint32_t> play = picture(nullptr); CHECK_EQ(differing(play, picture(&set)), (size_t)0);
+        set.bridge = &set.pool[1]; set.bridgeHold = ShadowSet::kBridgeHold - 1; CHECK(differing(play, picture(&set)) > 100);   // ... except for the first picture of play: the game's monsters are drawn one frame later
+        set.bridgeHold = ShadowSet::kBridgeHold; CHECK_EQ(differing(play, picture(&set)), (size_t)0); set.bridgeHold = 0;
         set.bridge = nullptr;
+    }
+    {   // the monsters of a neighbouring screen go over everything: a monster that stands at the edge of its screen is not cut off by the game's own room
+        const int west = room - 1; m.markExplored(slot, west);
+        setState(5, room); frames(m, 2, aspect);
+        const std::vector<uint32_t> b0 = picture(nullptr);
+        set.pool[0].adopt(*nes, west); monster(set.pool[0], 5, 252, 100); set.active = {&set.pool[0]};
+        const std::vector<uint32_t> w1 = picture(&set);
+        int x0 = 1 << 30, x1 = -1;
+        for (size_t i = 0; i < b0.size(); i++) if (b0[i] != w1[i]) { const int x = (int)(i % t.c.w); x0 = std::min(x0, x); x1 = std::max(x1, x); }
+        CHECK(x1 - x0 == 7);                                                                                    // (4 of the 8 px lie over Link's room and are drawn: with the game's room on top only 4 px would show)
+        set.active.clear();
+    }
+    {   // the sprites fade with the game's picture (stairs, caves, cellars fade by palette)
+        Canvas cv; cv.w = 64; cv.h = 64; cv.pixels.assign(64 * 64, 0xFF202020u);
+        set.pool[0].adopt(*nes, east); monster(set.pool[0], 5, 0, 0); Nes& sn = set.pool[0].nes();
+        m.drawFadedSprite(sn, cv, 0x20, 10, HUD_H + 10, 256); const uint32_t full = cv.pixels[10 * 64 + 10];
+        cv.pixels.assign(64 * 64, 0xFF202020u); m.drawFadedSprite(sn, cv, 0x20, 10, HUD_H + 10, 128);
+        CHECK(full != 0xFF202020u); CHECK_EQ(cv.pixels[10 * 64 + 10], mixColor(0xFF000000u, full, 128));
+        cv.pixels.assign(64 * 64, 0xFF202020u); m.drawFadedSprite(sn, cv, 0x20, 10, HUD_H + 10, 0); CHECK_EQ(cv.pixels[10 * 64 + 10], 0xFF000000u);
     }
     {   // the items, fairies and flames of the neighbouring screens glow and glitter like the ones of Link's own screen
         m.fog = false; m.lighting = true; set.enabled = true;
@@ -110,6 +131,13 @@ void section32(Ctx& t) {
         for (const auto& sp : m.sparkles) CHECK(std::fabs(sp.x - (ex + 108)) < 20 && sp.kind == 3);                          // (red glitter around it)
         const size_t before = m.sparkles.size(); m.lightSources.clear(); m.gatherShadowLights(room, slot, false); CHECK_EQ(m.sparkles.size(), before); CHECK_EQ(m.lightSources.size(), (size_t)1);   // (a glow without glitter)
         m.lightSources.clear(); m.gatherShadowLights(east, slot, true); CHECK(m.lightSources.empty());                       // (the screen Link is in is the game's own)
+        sn.ram[kObjType + 3] = 0; sn.ram[kObjState + 0x13] = 0; sn.ram[kRoomItemId] = kItemHeartContainer; sn.ram[kObjX + 0x13] = 100; sn.ram[kObjY + 0x13] = 150;     // a heart container (the room item, slot $13)
+        m.lightSources.clear(); m.sparkles.clear(); m.gatherShadowLights(room, slot, true); CHECK_EQ(m.lightSources.size(), (size_t)1);
+        if (!m.lightSources.empty()) CHECK_EQ((int)m.lightSources[0].x, (int)(ex + 108));
+        for (int i = 0; i < 80; i++) m.gatherShadowLights(room, slot, true);
+        CHECK(!m.sparkles.empty());
+        sn.ram[kObjState + 0x13] = 0x80; m.lightSources.clear(); m.gatherShadowLights(room, slot, false); CHECK(m.lightSources.empty());                            // (taken: dark)
+        sn.ram[kObjState + 0x13] = 0; sn.ram[kRoomItemId] = 0x3F; m.lightSources.clear(); m.gatherShadowLights(room, slot, false); CHECK(m.lightSources.empty()); sn.ram[kRoomItemId] = 0;
         sn.ram[kObjType + 3] = kTypePondFairy; sn.ram[kObjState + 3] = 0; m.lightSources.clear(); m.gatherShadowLights(room, slot, false); CHECK_EQ(m.lightSources.size(), (size_t)1);
         sn.ram[kObjType + 3] = kTypeGuardFire; m.lightSources.clear(); m.gatherShadowLights(room, slot, false); CHECK_EQ(m.lightSources.size(), (size_t)1);
         sn.ram[kObjType + 3] = kTypeItem; sn.ram[kObjState + 3] = kItemHeart; m.fog = true; m.lightSources.clear(); m.gatherShadowLights(room, slot, false); CHECK_EQ(m.lightSources.size(), (size_t)1);   // (explored)

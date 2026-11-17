@@ -48,7 +48,14 @@ void Widescreen::gatherShadowLights(int curRoom, int slot, bool sparkle) {
         if (!g->visible() || g->room() == curRoom) continue;
         if (fog && !discovered(slot, g->room())) continue;
         const int ox = (g->room() & 15) * ROOM_W, oy = (g->room() >> 4) * ROOM_H;
-        const Nes& n = g->nes();
+        Nes& n = g->nes();
+        // The room item (slot $13: a heart container, a triforce shard) glows and glitters too.
+        if (!(n.ram[zelda::kObjState + 0x13] & 0x80) && !roomItemTaken(n)) {
+            const int id = n.ram[zelda::kRoomItemId];
+            const float x = (float)(ox + n.ram[zelda::kObjX + 0x13] + 8), y = (float)(oy + n.ram[zelda::kObjY + 0x13] - HUD_H + 8);
+            if (id == zelda::kItemHeartContainer) { lightSources.push_back({x, y, 32, 0.4f, 0.0f, 255, 90, 100}); if (sparkle) spawnSparkles(x, y, 3); }
+            else if (id == zelda::kItemTriforce) { lightSources.push_back({x, y, 44, 0.6f, 0.0f, 255, 215, 90}); if (sparkle) spawnSparkles(x, y, 2); }
+        }
         for (int s = 1; s <= 12; s++) {
             const int ty = n.ram[zelda::kObjType + s], st = n.ram[zelda::kObjState + s];
             if (!ty) continue;

@@ -132,6 +132,7 @@ void Widescreen::drawSpriteAt(Nes& nes, Canvas& out, uint8_t tile, uint8_t attr,
                 const int t = flashAmount(wx0 + sx + px, wy0 + (sy - HUD_H + row), fl.cx, fl.cy);
                 if (t) col = mixColor(col, Ppu::nesColor(ci & 0x30), t);
             }
+            if (spriteFade < 256) col = mixColor(0xFF000000u, col, spriteFade);
             out.pixels[(size_t)y * out.w + x] = col;
         }
     }
