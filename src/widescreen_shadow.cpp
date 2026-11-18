@@ -24,8 +24,7 @@ void Widescreen::drawShadowSprites(Canvas& out, int camX, int camY, int topBand,
             if (o[0] >= 0xEF || sy + 16 <= HUD_H || hudSpriteEntry(n.ppu.oam, i)) continue;   // (parked, or the status bar's icons and the map marker, which pokes out below the bar)
             drawSpriteAt(n, out, o[1], o[2], o[3], sy, rx, ry, topBand, noFlash, 0, 0);
         }
-        if (onlyCurrent) continue;
-        // The monsters reflect in the water of their screen (pass B on that screen, objects only: the scenery's water was done with the terrain).
+        // The monsters reflect in the water of their screen (the bridging shadow too: its reflection must not blink while the game's picture has no monsters) (pass B on that screen, objects only: the scenery's water was done with the terrain).
         if (!waterDone || !waterReflections || terrainW != out.w || terrainH != out.h || terrainCamX != camX || terrainCamY != camY) continue;
         bool monsters = false, water = false;
         for (int s = 1; s <= 12 && !monsters; s++) monsters = n.ram[zelda::kObjType + s] != 0;
@@ -41,11 +40,11 @@ void Widescreen::drawShadowSprites(Canvas& out, int camX, int camY, int topBand,
 
 // What glows on the neighbouring screens: dropped items and fairies glow and glitter like the ones of Link's own screen, the guard fires and the flames of cave people
 // glow. Light-space = the overworld's world pixels (the same as gatherLights with the screen's origin).
-void Widescreen::gatherShadowLights(int curRoom, int slot, bool sparkle) {
+void Widescreen::gatherShadowLights(int curRoom, int slot, bool sparkle, bool withBridge) {
     if (!shadows || !shadows->enabled || !enabled) return;
     const unsigned t = dayClock.tick;
     for (ShadowGame* g : shadows->games()) {
-        if (!g->visible() || g->room() == curRoom) continue;
+        if (!g->visible() || (g->room() == curRoom && !(withBridge && g == shadows->bridgeGame()))) continue;     // (the bridging shadow of the screen Link is in lights it while the game has no objects of its own)
         if (fog && !discovered(slot, g->room())) continue;
         const int ox = (g->room() & 15) * ROOM_W, oy = (g->room() >> 4) * ROOM_H;
         Nes& n = g->nes();

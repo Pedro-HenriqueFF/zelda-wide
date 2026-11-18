@@ -85,6 +85,14 @@ void section32(Ctx& t) {
         CHECK_EQ(differing(dry2, wet2), (size_t)128);                                // (reflections off)
         m.waterReflections = true;
     }
+    {   // the bridging shadow reflects too (the reflection must not blink while the game's picture has no monsters)
+        set.active = {&set.pool[0]}; set.bridge = &set.pool[0];
+        setState(4, east); frames(m, 3, aspect);
+        m.waterReflections = true; const std::vector<uint32_t> reflected = picture(&set);
+        m.waterReflections = false; const std::vector<uint32_t> plain = picture(&set); m.waterReflections = true;
+        CHECK(differing(reflected, plain) > 0);
+        set.bridge = nullptr; setState(5, room); frames(m, 3, aspect);
+    }
     {   // between the glide and the hand-off, and while Link walks into the screen (mode 4: the game draws no monsters then), the bridge shadow of that screen is drawn over the picture
         setState(4, room); frames(m, 2, aspect);
         set.pool[1].adopt(*nes, room); monster(set.pool[1], 5, 100, 100); set.active = {&set.pool[1]};
@@ -116,6 +124,14 @@ void section32(Ctx& t) {
         CHECK(full != 0xFF202020u); CHECK_EQ(cv.pixels[10 * 64 + 10], mixColor(0xFF000000u, full, 128));
         cv.pixels.assign(64 * 64, 0xFF202020u); m.drawFadedSprite(sn, cv, 0x20, 10, HUD_H + 10, 0); CHECK_EQ(cv.pixels[10 * 64 + 10], 0xFF000000u);
     }
+    {   // leaving a screen (mode 6): the game's picture has no monsters, the screen's shadow (the bridge) is drawn over it
+        m.shadows = &set; m.fog = true; setState(5, room); nes->ram[kMenuState] = 0; frames(m, 3, aspect);
+        setState(kModeLeave, room); frames(m, 2, aspect);
+        set.pool[1].adopt(*nes, room); monster(set.pool[1], 5, 100, 100); set.active = {&set.pool[1]}; set.bridge = nullptr;
+        const std::vector<uint32_t> leave = picture(&set);
+        set.bridge = &set.pool[1]; CHECK(differing(leave, picture(&set)) > 100);
+        set.bridge = nullptr; set.active.clear(); setState(5, room); frames(m, 2, aspect);
+    }
     {   // the items, fairies and flames of the neighbouring screens glow and glitter like the ones of Link's own screen
         m.fog = false; m.lighting = true; set.enabled = true;
         set.pool[0].adopt(*nes, east); Nes& sn = set.pool[0].nes(); for (int sl = 1; sl <= 12; sl++) sn.ram[kObjType + sl] = 0;
@@ -131,6 +147,8 @@ void section32(Ctx& t) {
         for (const auto& sp : m.sparkles) CHECK(std::fabs(sp.x - (ex + 108)) < 20 && sp.kind == 3);                          // (red glitter around it)
         const size_t before = m.sparkles.size(); m.lightSources.clear(); m.gatherShadowLights(room, slot, false); CHECK_EQ(m.sparkles.size(), before); CHECK_EQ(m.lightSources.size(), (size_t)1);   // (a glow without glitter)
         m.lightSources.clear(); m.gatherShadowLights(east, slot, true); CHECK(m.lightSources.empty());                       // (the screen Link is in is the game's own)
+        set.bridge = &set.pool[0]; m.gatherShadowLights(east, slot, false, true); CHECK_EQ(m.lightSources.size(), (size_t)1);   // ... unless it bridges the picture while the game has no objects of its own
+        set.bridge = nullptr; m.lightSources.clear();
         sn.ram[kObjType + 3] = 0; sn.ram[kObjState + 0x13] = 0; sn.ram[kRoomItemId] = kItemHeartContainer; sn.ram[kObjX + 0x13] = 100; sn.ram[kObjY + 0x13] = 150;     // a heart container (the room item, slot $13)
         m.lightSources.clear(); m.sparkles.clear(); m.gatherShadowLights(room, slot, true); CHECK_EQ(m.lightSources.size(), (size_t)1);
         if (!m.lightSources.empty()) CHECK_EQ((int)m.lightSources[0].x, (int)(ex + 108));
@@ -161,9 +179,11 @@ void section32(Ctx& t) {
         set.pool[0].adopt(*nes, east); monster(set.pool[0], 5, 100, 100); set.pool[1].adopt(*nes, room); monster(set.pool[1], 5, 100, 100); set.active = {&set.pool[0], &set.pool[1]};
         set.base = room;
         const std::vector<uint32_t> walk = picture(nullptr), walkLive = picture(&set);
-        CHECK_EQ(differing(walk, walkLive), (size_t)128);                                                      // (the east screen's monster only: the shadow of Link's own screen stays hidden)
-        nes->ram[kRoomId] = 0x7F; const std::vector<uint32_t> stairs = picture(&set);                          // (stairs: RoomId is already the cellar's; the shadow of the screen he stands on stays hidden)
-        CHECK(differing(walk, stairs) <= 128 + 128); nes->ram[kRoomId] = room;
+        CHECK_EQ(differing(walk, walkLive), (size_t)256);                                                      // (the east screen's monster and the one of Link's own screen: the game's picture of the walk has none)
+        set.active = {&set.pool[0]}; CHECK_EQ(differing(walk, picture(&set)), (size_t)128);                    // (no shadow of the screen: nothing stands in, the game's own picture is used)
+        set.active = {&set.pool[0], &set.pool[1]};
+        nes->ram[kRoomId] = 0x7F; const std::vector<uint32_t> stairs = picture(&set);                          // (stairs: RoomId is already the cellar's)
+        CHECK(differing(walk, stairs) >= 256); nes->ram[kRoomId] = room;
         setState(5, room); frames(m, 2, aspect);
     }
     {   // the picture fades into a cellar (mode 9): the game hides its monsters, so the shadow of the screen Link stood on is drawn (it is not "the game's own screen" any more)
@@ -173,6 +193,15 @@ void section32(Ctx& t) {
         const std::vector<uint32_t> fade = picture(nullptr), fadeLive = picture(&set);
         CHECK(differing(fade, fadeLive) > 100);
         setState(5, room); frames(m, 2, aspect);
+    }
+    {   // the sparkles of the items on the neighbouring screens go on glittering when Link changes screen (only the boomerang's trail is dropped)
+        m.shadows = nullptr; m.fog = false; setState(5, room); nes->ram[kMenuState] = 0; frames(m, 3, aspect); m.sparkles.clear();
+        Widescreen::Sparkle keep{50.f, 50.f, 0.f, 12345u, 100000, 3}, trail{60.f, 60.f, 0.f, 777u, 100000, 1};
+        m.sparkles.push_back(keep); m.sparkles.push_back(trail);
+        setState(5, east); frames(m, 3, aspect);
+        bool k = false, t = false; for (const auto& sp : m.sparkles) { k = k || sp.born == 12345u; t = t || sp.born == 777u; }
+        CHECK(k); CHECK(!t);
+        setState(5, room); frames(m, 2, aspect); m.sparkles.clear();
     }
     m.shadows = nullptr;
 }

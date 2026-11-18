@@ -60,7 +60,7 @@ void Widescreen::renderGlide(Nes& nes, double windowAspect, Canvas& out) {
             std::copy(ext.begin() + (size_t)(M + topBand) * W, ext.end(), out.pixels.begin() + (size_t)topBand * W);
         }
     }
-    lightLinkX = (float)(ox + glideView.linkX + 8); lightLinkY = (float)(oy + glideView.linkY - HUD_H + 8); lightSources.clear(); sparkles.clear(); lightPpu = &nes.ppu; candleHeld = nes.ram[kSelectedItem] == kItemSlotCandle ? nes.ram[kInvCandle] : 0;
+    lightLinkX = (float)(ox + glideView.linkX + 8); lightLinkY = (float)(oy + glideView.linkY - HUD_H + 8); lightSources.clear(); sparkles.erase(std::remove_if(sparkles.begin(), sparkles.end(), [](const Sparkle& sp) { return sp.kind == 1; }), sparkles.end()); lightPpu = &nes.ppu; candleHeld = nes.ram[kSelectedItem] == kItemSlotCandle ? nes.ram[kInvCandle] : 0;
     if (lighting) gatherStaticLights(nes, glideView.room, slot, false, (glideView.room & 15) * ROOM_W, (glideView.room >> 4) * ROOM_H);   // (the statues' glow does not go out)
     if (lighting) gatherShadowLights(-1, slot, true);                  // (the items and fairies of the neighbouring screens glow and glitter)
     steadyLinkX = lightLinkX; steadyLinkY = lightLinkY; steadyValid = true;   // (Link's sight walks with him)

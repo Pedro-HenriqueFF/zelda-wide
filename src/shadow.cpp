@@ -62,7 +62,11 @@ bool ShadowGame::retry(const Nes& real, uint32_t seed) {
 // (with the despawn timers that went on running) are there, flying monsters keep their speed.
 ShadowGame::HandOff ShadowGame::handOffTo(Nes& real) {
     if (!visible() || !game || real.ram[kRoomId] != target || real.ram[kCurLevel] != 0) return HandOff::No;
-    for (uint16_t base : kHandOffArrays) for (int s = 1; s <= 12; s++) real.ram[base + s] = game->ram[base + s];
+    auto scenery = [](uint8_t t) { return t >= kTypeSceneryFirst && t <= kTypeSceneryLast; };
+    for (int s = 1; s <= 12; s++) {
+        if (scenery(real.ram[kObjType + s]) || scenery(game->ram[kObjType + s])) continue;       // (docks, rocks, trees: the game's own)
+        for (uint16_t base : kHandOffArrays) real.ram[base + s] = game->ram[base + s];
+    }
     for (uint16_t a : kHandOffBytes) real.ram[a] = game->ram[a];
     for (int i = 0; i < kRoomObjTemplateLen; i++) real.ram[kRoomObjTemplateType + i] = game->ram[kRoomObjTemplateType + i];
     for (int i = 0; i < kRandomLen; i++) real.ram[kRandom + i] = game->ram[kRandom + i];     // (the same dice and the same Link position: the shadow that stands in for a few more frames and the game then go on the same way)
@@ -133,6 +137,9 @@ void ShadowGame::wanderLink() {
     }
     for (int k = 0; k < 12 && !safe(lx, ly); k++) { lx = (float)(kWanderX0 + rnd() % (kWanderX1 - kWanderX0)); ly = (float)(kWanderY0 + rnd() % (kWanderY1 - kWanderY0)); }
     r[kObjX] = (uint8_t)lx; r[kObjY] = (uint8_t)ly; r[kObjGridOffset] = 0;
+    if (r[kObjY] == kPondEdgeY) r[kObjY]++;                                                    // (a Link at the pond's edge makes the Great Fairy fill hearts and halt him: UpdatePondFairy, Z_04.asm 3384-3400)
+    if (r[kObjX] == kDockX || r[kObjX] == kDockXRoom55) r[kObjX]++;                            // (a Link standing exactly there starts the raft ride: UpdateDock, Z_04.asm 3862-3900)
+    r[kObjState] = 0;
     r[kChaseOtherTarget] = 0; r[kChaseLongTimer] = kChaseKeep;                                // (the monsters always chase him, never the mirrored point: the game flips the target when this timer runs out)
 }
 
@@ -180,7 +187,7 @@ void ShadowGame::stepFrame() {
 
 void ShadowSet::clear() {
     for (ShadowGame& g : pool) g.reset();
-    active.clear(); base = -1; bridge = nullptr; bridgeHold = 0; departed = false; walking = false; wasOverworldPlay = false;   // (an armed hand-off stays armed: it is for the screen the real game is loading)
+    active.clear(); base = -1; bridge = nullptr; bridgeHold = 0; departed = false; wasOverworldPlay = false; dropDelay = -1;   // (an armed hand-off stays armed: it is for the screen the real game is loading)
 }
 
 ShadowGame* ShadowSet::alloc() {
@@ -243,15 +250,20 @@ void ShadowSet::update(Nes& real) {
     const int level = real.ram[kCurLevel];
     if (worldGone(mode)) { handOffArmed = false; lastMode = -1; wasOverworldPlay = false; if (!active.empty() || base >= 0) clear(); return; }
     // Inside a dungeon nothing of the overworld shows and the game makes its monsters afresh when Link comes out: the shadows only live through the walk in.
-    if (level != 0 && mode != kModeStairs) { handOffArmed = false; lastMode = -1; wasOverworldPlay = false; if (!active.empty() || base >= 0) clear(); return; }
+    if (level != 0 && mode != kModeStairs) {                          // (the picture is a frame behind: the shadows stay for the last pictures of the walk)
+        if (dropDelay < 0) dropDelay = kDropDelay;
+        if (dropDelay-- == 0) { handOffArmed = false; lastMode = -1; wasOverworldPlay = false; if (!active.empty() || base >= 0) clear(); dropDelay = -1; return; }
+        if (!active.empty()) stepAll();
+        return;
+    }
+    dropDelay = -1;
     // The overworld goes on in every other mode: scrolls, caves, stairs, the walk in and out. The shadows are stepped once per frame like the real game would.
     if (mode == kModeLeave && level == 0) {                           // Link is leaving the screen: it carries on as a shadow from exactly this state
-        if (!departed) { departed = true; capture(real, real.ram[kRoomId]); }
-    } else if (mode != kModeLeave) departed = false;
-    if (mode == kModeStairs) { if (wasOverworldPlay && base >= 0) walking = true; }       // a cave, stairs or a dungeon entrance: Link walks in (the real game's monsters still move)
-    else if (walking) {                                               // the walk is over: the screen Link stood on carries on from this very state (RoomId may already be the cellar's)
-        walking = false; if (level == 0 && base >= 0) capture(real, base);
-    }
+        if (!departed) { departed = true; if (ShadowGame* g = capture(real, real.ram[kRoomId])) bridge = g; }   // (the picture of mode 6 has no monsters either: the shadow stands in for them)
+    } else if (mode != kModeStairs) departed = false;
+    // A cave, stairs or a dungeon entrance: the screen Link stood on carries on as a shadow from the start of the walk in (RoomId may already be the cellar's). The game hides its
+    // monsters from the picture of the walk on, so the shadow's are drawn instead (Widescreen::render).
+    if (mode == kModeStairs && wasOverworldPlay && base >= 0 && !departed) { departed = true; capture(real, base); }
     if (mode == kModeEnter && lastMode != kModeEnter && !handOffArmed) armHandOff(real);   // (a way back from a cave, stairs or a dungeon: the scroll's own entry is armed by main.cpp)
     lastMode = mode;
     if (bridgeHold > 0 && --bridgeHold == 0 && bridge) { dropBridge(); }
@@ -272,12 +284,13 @@ void ShadowSet::update(Nes& real) {
 }
 
 // The screen being left (`room`) goes on as a shadow; there is never more than one shadow of a screen.
-void ShadowSet::capture(const Nes& real, int room) {
+ShadowGame* ShadowSet::capture(const Nes& real, int room) {
     ShadowGame* g = alloc();
-    if (!g || !g->captureFrom(real, room, (uint32_t)(real.cpu.totalCycles >> 5) + (uint32_t)room * 131u)) return;
+    if (!g || !g->captureFrom(real, room, (uint32_t)(real.cpu.totalCycles >> 5) + (uint32_t)room * 131u)) return nullptr;
     for (ShadowGame* o : active) if (o != g && o->room() == g->room()) o->reset();
     active.erase(std::remove_if(active.begin(), active.end(), [](ShadowGame* o) { return o->state() == ShadowGame::State::Idle; }), active.end());
     active.push_back(g);
+    return g;
 }
 
 // Nothing could be taken over from the shadow of the screen Link is in: it is dropped (two simulations of one screen would run side by side).

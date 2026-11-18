@@ -22,6 +22,8 @@ public:
     static constexpr int kSettleFrames = 120;     // frames after arriving (monsters poof in, then roam)
     static constexpr int kWanderX0 = 0x28, kWanderX1 = 0xD0, kWanderY0 = 0x6D, kWanderY1 = 0xBD;   // where the stand-in Link strolls (ObjX / ObjY)
     static constexpr float kWanderSpeed = 1.5f, kItemClear = 14.0f;
+    static constexpr uint8_t kPondEdgeY = 0xAD;     // the Y at which a Link at the Great Fairy's pond starts her heart animation (X $70-$80)
+    static constexpr uint8_t kDockX = 0x60, kDockXRoom55 = 0x80;   // the X at which a Link on a dock starts the raft (rooms $3F / $55)
     static constexpr uint8_t kChaseKeep = 7;       // ChaseLongTimer is kept up so that the game never switches the monsters' target
     static constexpr uint8_t kUnkillable = 0xFF;  // HeartValues / HeartPartial of the stand-in Link: full, many hearts (a hit can never kill him)
 
@@ -74,6 +76,7 @@ private:
 class ShadowSet {
 public:
     static constexpr int kSpinStepsPerFrame = 3;  // a shadow that is still spinning up runs this many frames per real frame (it appears sooner)
+    static constexpr int kDropDelay = 2;           // updates the shadows stay after Link is inside a dungeon (the last pictures of the walk in)
     static constexpr int kBridgeHold = 4;         // updates the entered screen's shadow stays after the hand-off; it is drawn for the first pictures of play too (they are a frame or more behind the game and have no monsters yet)
     bool enabled = false;
     // Called once per real frame after it ran. Keeps the shadows going: new neighbours are made when the real game is in plain overworld play in a new room
@@ -90,6 +93,7 @@ public:
     void armHandOff(const Nes& real);
     bool handOffPending() const { return handOffArmed; }
     const ShadowGame* bridgeGame() const { return bridge; }
+    bool hasVisible(int room) const { for (const ShadowGame* g : active) if (g->room() == room && g->visible()) return true; return false; }   // a shadow of this screen is there to be drawn
     // The first picture of plain play after a walk in has no monsters yet either (the game draws them one frame later): the bridge is still drawn for it.
     bool bridgeShowsInPlay() const { return bridge && bridgeHold > 0 && bridgeHold < kBridgeHold; }
     ShadowGame::HandOff tryHandOff(Nes& real);
@@ -99,13 +103,14 @@ public:
     ShadowGame pool[12];
     std::vector<ShadowGame*> active;
     int base = -1;
-    bool handOffArmed = false, departed = false, wasOverworldPlay = false, walking = false;
+    bool handOffArmed = false, departed = false, wasOverworldPlay = false;
+    int dropDelay = -1;
     int lastMode = -1;
     int bridgeHold = 0;
     ShadowGame* bridge = nullptr;
 private:
     void reconcile(Nes& real);
-    void capture(const Nes& real, int room);
+    ShadowGame* capture(const Nes& real, int room);
     void dropBridge();
     void retire(int room);
     void stepAll();

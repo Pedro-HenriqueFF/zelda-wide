@@ -273,7 +273,11 @@ void Widescreen::renderCore(Nes& nes, double windowAspect, Canvas& out) {
     lightLinkX = steadyLinkX; lightLinkY = steadyLinkY;
     lightPpu = &nes.ppu; fxNes = &nes; fxSlot = slot; fxRoom = view.room; fxOx = (view.room & 15) * ROOM_W; fxOy = (view.room >> 4) * ROOM_H;
     const bool dungeonTrans = view.level != 0 && (view.mode == kModeScroll || view.mode == kModeStairs);       // (the room we leave scrolls away with its sparkles: they are cleared once the next room is at rest)
-    if (view.room != lightRoom && !dungeonTrans) { sparkles.clear(); lightRoom = view.room; roomAge = roomPlayAge = 0; }              // (sparkles and trails stay with their screen)
+    if (view.room != lightRoom && !dungeonTrans) {                                                                                   // (in a dungeon or cave the sparkles stay with their screen; on the overworld they sit in world space and
+        if (view.level != 0 || kind == Kind::Cave || kind == Kind::Interior) sparkles.clear();                                          //  go on across a change of screen: the items of the neighbours were glittering already)
+        else sparkles.erase(std::remove_if(sparkles.begin(), sparkles.end(), [](const Sparkle& sp) { return sp.kind == 1; }), sparkles.end());      // (only the boomerang's trail is dropped)
+        lightRoom = view.room; roomAge = roomPlayAge = 0;
+    }
     const int space = view.level != 0 ? 2 : (kind == Kind::Cave || kind == Kind::Interior) ? 1 : 0;      // overworld / inside a cave / dungeon
     if (space != lightSpace) { sparkles.clear(); lightSpace = space; }
     candleHeld = nes.ram[kSelectedItem] == kItemSlotCandle ? nes.ram[kInvCandle] : 0;
@@ -284,7 +288,11 @@ void Widescreen::renderCore(Nes& nes, double windowAspect, Canvas& out) {
     // (stairs, a cave, a cellar: the game fades its picture by palette; the shadows' monsters on it fade the same way)
     const int shadowFade = kind == Kind::Transition && owRefLuma > 0 ? std::clamp(paletteLuma(nes.ppu.palette) * 256 / owRefLuma, 0, 256) : 256;
     // (the stairs' RoomId is already the cellar's: while Link walks down the game's own monsters are on the picture, once it fades into the cellar the screen's shadow is)
-    const int shadowCur = view.mode == kModeStairs && shadows ? shadows->baseRoom() : (view.mode == kModeCellar ? -1 : view.room);
+    // The game's own picture of the walk into a cave, stairs or a dungeon has no monsters (or they vanish with the fade): the shadow of the screen stands in from the first picture of the walk.
+    const bool takeover = shadowScene && shadows && view.mode == kModeStairs && shadows->hasVisible(shadows->baseRoom());
+    const int shadowCur = takeover ? -1 : (view.mode == kModeStairs && shadows ? shadows->baseRoom() : (view.mode == kModeCellar ? -1 : view.room));
+    // The screen's own shadow is drawn over the picture while the game's picture has no monsters: leaving a screen (mode 6), walking into a screen or out of a cave, the first pictures of play.
+    const bool bridgeNow = shadows && shadows->bridgeGame() && shadowScene && (view.mode == kModeEnter || view.mode == kModeLeaveCave || view.mode == kModeLeave || (view.mode == kModePlay && shadows->bridgeShowsInPlay()));
     if (lighting && (layout != Layout::Plain || mazeShown) && (kind == Kind::Overworld || kind == Kind::OverworldOdd))   // what glows (moving things only while the game plays; statues always)
         gatherLights(nes, view, (view.room & 15) * ROOM_W, (view.room >> 4) * ROOM_H, slot, true, view.mode == kModePlay);
     else if (lighting && layout != Layout::Plain && (kind == Kind::Transition || kind == Kind::OverworldIntro || kind == Kind::Cave)) {   // (also while a dungeon is entered: the overworld is still on screen)
@@ -302,7 +310,7 @@ void Widescreen::renderCore(Nes& nes, double windowAspect, Canvas& out) {
             lastScene = sc; lastBridge = br; lastVisible = vis; lastMode = view.mode;
         }
     }
-    if (lighting && shadowScene) gatherShadowLights(shadowCur, slot, true);
+    if (lighting && shadowScene) gatherShadowLights(shadowCur, slot, true, bridgeNow);
     const bool dungeonView = view.level != 0 && layout == Layout::Plain && (kind == Kind::Interior || kind == Kind::Transition);   // (rooms sliding, stairs, cellars, the death scene)
     if (!dungeonView) { dungeonDim = dungeonLit = 0; wasScroll = false; frozenOn = false; staleObjects = false; }
     if (!(kind == Kind::Cave || (kind == Kind::Interior && view.level == 0) || dungeonView) && !caveSession) caveDim = 0;
@@ -430,6 +438,7 @@ void Widescreen::renderCore(Nes& nes, double windowAspect, Canvas& out) {
         // The game's own picture of the current screen (with Link, enemies, effects) goes on top, untouched.
         perf::Scope perfRoom(perf::kRoom);                       // (the game's own picture: sprites, effects, the water of Link and the monsters)
         planSpriteFixes(nes, view, hideLinkSprites);
+        if (takeover) for (int i = 0; i < 64; i++) if (i != kLinkOam0 && i != kLinkOam1 && !hudSpriteEntry(nes.ppu.oam, i)) hideSprite[i] = true;   // (the shadow's monsters are drawn: not these twice)
         blitRoomId = view.room;
         blitSecrets = kind == Kind::Overworld && view.level == 0 ? roomSecrets(nes, view.room) : nullptr;
         blitRoom(nes, out, roomX, roomY, topBand, flash, ox, oy);
@@ -439,7 +448,7 @@ void Widescreen::renderCore(Nes& nes, double windowAspect, Canvas& out) {
         // The monsters of the shadows go over everything (a jumping monster that leaves its screen is not cut off by the next one), the game's room included.
         spriteFade = shadowFade;
         if (shadowScene) drawShadowSprites(out, camX, camY, topBand, shadowCur, view.slot);
-        if (shadows && shadows->bridgeGame() && shadowScene && (view.mode == kModeEnter || view.mode == kModeLeaveCave || (view.mode == kModePlay && shadows->bridgeShowsInPlay())))
+        if (bridgeNow)
             drawShadowSprites(out, camX, camY, topBand, view.room, view.slot, true);
         spriteFade = 256;
         roomWaterOk = waterDone && waterOn() && layout == Layout::World && terrainW == out.w && terrainH == out.h && terrainCamX == camX && terrainCamY == camY

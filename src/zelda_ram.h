@@ -23,6 +23,9 @@ constexpr uint16_t kHandOffBytes[] = {0x34D, 0x34E, 0x4D1, 0x510, 0x514, 0x515, 
 constexpr uint16_t kRoomObjTemplateType = 0x35F, kRoomObjTemplateLen = 0x21;   // (RoomObjTemplateType 35F-37F, the room's monster list)
 // $412 ObjWantsToShoot / Flyer_ObjSpeedFrac, $41F ObjTurnRate / Flyer_ObjSpeed / Jumper_ObjSpeedFracY, $42C Flyer_ObjTurns, $437 Flyer_ObjDistTraveled (ObjVars.inc 1-30): a flying peahat
 // or a jumping tektite loses its speed and turns without them (the rest of ObjVars.inc's arrays are among the others).
+// Scenery objects the game makes from the room (UpdateObject_JumpTable, Z_07.asm 5415-5425): $61 dock (the raft: its ObjState carries Link up or down), $62/$65/$66 rock or
+// gravestone, $63/$67 rock wall, $64 tree, $68 push block, $69 nothing. The shadow games never hand these over: a raft that a shadow's Link had started would drag the real Link.
+constexpr uint8_t kTypeSceneryFirst = 0x61, kTypeSceneryLast = 0x69;
 constexpr uint16_t kChaseOtherTarget = 0x60, kChaseLongTimer = 0x4A;   // (Variables.inc 14, 34: who the monsters chase; Z_07.asm 1895-1950)
 constexpr uint16_t kRandom = 0x18;                   // Random: the 13-byte shift register the NMI handler scrambles every frame (Z_07.asm 511-531, Variables.inc 8)
 constexpr int kRandomLen = 13;
