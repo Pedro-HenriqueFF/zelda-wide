@@ -16,11 +16,14 @@ constexpr uint8_t kTypeFirstProjectile = 0x53, kTypeLastProjectile = 0x5C;   // 
 // Bases from Variables.inc / ObjVars.inc (arrays of 13 entries: ObjTimer 28, ObjStunTimer 3D, ObjX 70, ObjY 84, ObjDir 98, ObjState AC, ObjShoveDir C0, ObjShoveDistance D3,
 // ObjType 34F, ObjMovingLimit 380, ObjGridOffset 394, ObjPosFrac 3A8, ObjQSpeedFrac 3BC, ObjAnimCounter 3D0, ObjAnimFrame 3E4, ObjInputDir 3F8, ObjMetastate 405,
 // the per-monster variables 444/451/45E/46B/478, ObjHP 485, ObjUninitialized 492, ObjCollidedTile 49E, ObjInvincibilityMask 4B2, ObjAttr 4BF, ObjInvincibilityTimer 4F0).
-constexpr uint16_t kHandOffArrays[] = {0x28, 0x3D, 0x70, 0x84, 0x98, 0xAC, 0xC0, 0xD3, 0x34F, 0x380, 0x394, 0x3A8, 0x3BC, 0x3D0, 0x3E4, 0x3F8, 0x405, 0x444, 0x451, 0x45E, 0x46B, 0x478, 0x485, 0x492, 0x49E, 0x4B2, 0x4BF, 0x4F0};
+constexpr uint16_t kHandOffArrays[] = {0x28, 0x3D, 0x70, 0x84, 0x98, 0xAC, 0xC0, 0xD3, 0x34F, 0x380, 0x394, 0x3A8, 0x3BC, 0x3D0, 0x3E4, 0x3F8, 0x405, 0x412, 0x41F, 0x42C, 0x437, 0x444, 0x451, 0x45E, 0x46B, 0x478, 0x485, 0x492, 0x49E, 0x4B2, 0x4BF, 0x4F0};
 // RoomAllDead 34D, RoomObjCount 34E, FlyingMaxSpeedFrac 4D1, ActiveRedLeeverCount 510, ZoraActive 514, ActiveBoulders 515-519, ChaseLongTimer 4A, MonstersFromEdgesLongTimer 4B,
 // RedLeeverLongTimer 4D, EmptyMonsterSlot 59, SpawnCycle 524, CurEdgeSpawnCell 525
 constexpr uint16_t kHandOffBytes[] = {0x34D, 0x34E, 0x4D1, 0x510, 0x514, 0x515, 0x516, 0x517, 0x518, 0x519, 0x4A, 0x4B, 0x4D, 0x59, 0x524, 0x525};
 constexpr uint16_t kRoomObjTemplateType = 0x35F, kRoomObjTemplateLen = 0x21;   // (RoomObjTemplateType 35F-37F, the room's monster list)
+// $412 ObjWantsToShoot / Flyer_ObjSpeedFrac, $41F ObjTurnRate / Flyer_ObjSpeed / Jumper_ObjSpeedFracY, $42C Flyer_ObjTurns, $437 Flyer_ObjDistTraveled (ObjVars.inc 1-30): a flying peahat
+// or a jumping tektite loses its speed and turns without them (the rest of ObjVars.inc's arrays are among the others).
+constexpr uint16_t kChaseOtherTarget = 0x60, kChaseLongTimer = 0x4A;   // (Variables.inc 14, 34: who the monsters chase; Z_07.asm 1895-1950)
 constexpr uint16_t kRandom = 0x18;                   // Random: the 13-byte shift register the NMI handler scrambles every frame (Z_07.asm 511-531, Variables.inc 8)
 constexpr int kRandomLen = 13;
 constexpr uint16_t kObjShoveDir = 0xC0, kObjShoveDistance = 0xD3, kObjGridOffset = 0x394, kObjInvincibilityTimer = 0x4F0;   // (Variables.inc 54, 55, 103, 147)

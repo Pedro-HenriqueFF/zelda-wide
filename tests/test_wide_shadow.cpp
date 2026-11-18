@@ -166,5 +166,13 @@ void section32(Ctx& t) {
         CHECK(differing(walk, stairs) <= 128 + 128); nes->ram[kRoomId] = room;
         setState(5, room); frames(m, 2, aspect);
     }
+    {   // the picture fades into a cellar (mode 9): the game hides its monsters, so the shadow of the screen Link stood on is drawn (it is not "the game's own screen" any more)
+        m.shadows = nullptr; m.fog = true; setState(5, room); nes->ram[kMenuState] = 0; frames(m, 3, aspect);
+        setState(kModeCellar, room); nes->ram[kIsUpdatingMode] = 0; frames(m, 2, aspect);
+        set.pool[0].adopt(*nes, room); monster(set.pool[0], 5, 100, 100); set.active = {&set.pool[0]}; set.base = room;
+        const std::vector<uint32_t> fade = picture(nullptr), fadeLive = picture(&set);
+        CHECK(differing(fade, fadeLive) > 100);
+        setState(5, room); frames(m, 2, aspect);
+    }
     m.shadows = nullptr;
 }

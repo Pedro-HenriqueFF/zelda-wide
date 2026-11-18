@@ -58,39 +58,16 @@ bool ShadowGame::retry(const Nes& real, uint32_t seed) {
     return true;
 }
 
+// The shadow is the screen as Link left it, so its creatures replace whatever the game has just made: monsters that were killed stay dead, the items on the ground
+// (with the despawn timers that went on running) are there, flying monsters keep their speed.
 ShadowGame::HandOff ShadowGame::handOffTo(Nes& real) {
     if (!visible() || !game || real.ram[kRoomId] != target || real.ram[kCurLevel] != 0) return HandOff::No;
-    int have[256] = {}, want[256] = {};                               // the real game's monsters must be kinds the shadow has too (else the screen is not the same: leave it)
-    for (int s = 1; s <= 12; s++) {
-        const uint8_t a = game->ram[kObjType + s], b = real.ram[kObjType + s];
-        if (a && !(a >= kTypeFirstProjectile && a <= kTypeLastProjectile)) have[a]++;
-        if (b) want[b]++;
-    }
-    int shadowMonsters = 0, realMonsters = 0;                         // (the game has not made the screen's monsters yet: nothing to take over, try again later)
-    for (int s = 1; s <= 12; s++) { const uint8_t a = game->ram[kObjType + s], b = real.ram[kObjType + s]; shadowMonsters += a && a < kTypeFirstProjectile; realMonsters += b && b < kTypeFirstProjectile; }
-    if (shadowMonsters > 0 && realMonsters == 0) return HandOff::Wait;
-    for (int t = 0; t < 256; t++) if (want[t] > have[t]) return carryItems(real) ? HandOff::Done : HandOff::No;     // (other monsters: the game's own stay, but the items on the ground come along)
     for (uint16_t base : kHandOffArrays) for (int s = 1; s <= 12; s++) real.ram[base + s] = game->ram[base + s];
     for (uint16_t a : kHandOffBytes) real.ram[a] = game->ram[a];
     for (int i = 0; i < kRoomObjTemplateLen; i++) real.ram[kRoomObjTemplateType + i] = game->ram[kRoomObjTemplateType + i];
     for (int i = 0; i < kRandomLen; i++) real.ram[kRandom + i] = game->ram[kRandom + i];     // (the same dice and the same Link position: the shadow that stands in for a few more frames and the game then go on the same way)
     followRealLink(real);
     return HandOff::Done;
-}
-
-// The items lying on the ground of the shadow's screen (type $60, slots 1-12) are moved into free monster slots of the real game, with all their variables (the despawn
-// timer included): an item dropped before Link left can still be picked up when he comes back. False: no item, or no free slot.
-bool ShadowGame::carryItems(Nes& real) const {
-    bool any = false;
-    for (int s = 1; s <= 12; s++) {
-        if (game->ram[kObjType + s] != kTypeItem) continue;
-        for (int t = 1; t <= 12; t++) {
-            if (real.ram[kObjType + t] != 0) continue;
-            for (uint16_t base : kHandOffArrays) real.ram[base + t] = game->ram[base + s];
-            any = true; break;
-        }
-    }
-    return any;
 }
 
 // `room`: the screen being left (for a warp the real game's RoomId may already be the cellar's). The game has only just switched to mode 6 (scroll) or, after the
@@ -133,7 +110,7 @@ void ShadowGame::issueHop() {
 
 void ShadowGame::placeLinkNeutral() {
     game->ram[kObjX] = kCenterX; game->ram[kObjY] = kCenterY; game->ram[kObjGridOffset] = 0;
-    lx = wx = kCenterX; ly = wy = kCenterY; wpause = 0; wanders = true;
+    lx = wx = kCenterX; ly = wy = kCenterY; wanders = true;
 }
 
 // The stand-in Link strolls about the screen (the monsters of Zelda 1 steer towards the player: with a Link who never moves they all gathered around him). He keeps out of
@@ -147,15 +124,16 @@ void ShadowGame::wanderLink() {
         return true;
     };
     auto newGoal = [&]() { wx = (float)(kWanderX0 + rnd() % (kWanderX1 - kWanderX0)); wy = (float)(kWanderY0 + rnd() % (kWanderY1 - kWanderY0)); };
-    if (wpause > 0) wpause--;
-    else {
+    for (int k = 0; k < 4; k++) {                                        // (he never stands still: the game mirrors the chase target of a Link who does not move, and the monsters would dither between him and the far side of the screen)
         const float dx = wx - lx, dy = wy - ly, d = std::sqrt(dx * dx + dy * dy);
-        if (d < 1.5f) { wpause = rnd() % kWanderPause; newGoal(); }
-        else if (safe(lx + dx / d * kWanderSpeed, ly + dy / d * kWanderSpeed)) { lx += dx / d * kWanderSpeed; ly += dy / d * kWanderSpeed; }
-        else newGoal();                                                                        // (an item lies in the way)
+        if (d < kWanderSpeed) { newGoal(); continue; }
+        const float nx = lx + dx / d * kWanderSpeed, ny = ly + dy / d * kWanderSpeed;
+        if (safe(nx, ny)) { lx = nx; ly = ny; break; }
+        newGoal();                                                       // (an item lies in the way: another goal)
     }
     for (int k = 0; k < 12 && !safe(lx, ly); k++) { lx = (float)(kWanderX0 + rnd() % (kWanderX1 - kWanderX0)); ly = (float)(kWanderY0 + rnd() % (kWanderY1 - kWanderY0)); }
     r[kObjX] = (uint8_t)lx; r[kObjY] = (uint8_t)ly; r[kObjGridOffset] = 0;
+    r[kChaseOtherTarget] = 0; r[kChaseLongTimer] = kChaseKeep;                                // (the monsters always chase him, never the mirrored point: the game flips the target when this timer runs out)
 }
 
 // The shadow stands in for the real game's monsters for a few more frames (the hand-off): its Link stands where the real one does.
@@ -211,7 +189,7 @@ ShadowGame* ShadowSet::alloc() {
 }
 
 void ShadowSet::armHandOff(const Nes& real) {
-    handOffArmed = true; entryFrames = 0; bridge = nullptr; bridgeHold = 0;
+    handOffArmed = true; bridge = nullptr; bridgeHold = 0;
     if (!enabled) return;
     for (ShadowGame* g : active) if (g->visible() && g->room() == (int)real.ram[kRoomId]) bridge = g;
 }
@@ -224,7 +202,7 @@ void ShadowSet::reconcile(Nes& real) {
     std::vector<ShadowGame*> keep;
     for (ShadowGame* g : active) {
         const int dx = (g->room() & 15) - (room & 15), dy = (g->room() >> 4) - (room >> 4);
-        if (g == bridge) continue;                                    // (the screen Link has entered: its monsters are the real game's now; the shadow only bridges the picture)
+        if (g == bridge) { keep.push_back(g); continue; }             // (the screen Link has entered: its monsters are the real game's now; the shadow only bridges the picture, and goes on until it is dropped)
         if (g->room() != room && std::abs(dx) <= 1 && std::abs(dy) <= 1 && g->state() != ShadowGame::State::Failed) keep.push_back(g);
         else g->reset();
     }
@@ -277,14 +255,6 @@ void ShadowSet::update(Nes& real) {
     if (mode == kModeEnter && lastMode != kModeEnter && !handOffArmed) armHandOff(real);   // (a way back from a cave, stairs or a dungeon: the scroll's own entry is armed by main.cpp)
     lastMode = mode;
     if (bridgeHold > 0 && --bridgeHold == 0 && bridge) { dropBridge(); }
-    if (handOffArmed) {                                               // Link has walked into a screen: its shadow's monsters replace the fresh ones once the game has made them
-        if (mode == kModeEnter && real.ram[kGameSubmode] == 0) entryFrames++;
-        // (the first frame seen in mode 4 submode 0 comes BEFORE InitMode_EnterRoom, which clears $0300-$051F and makes the monsters; the second comes after it)
-        if ((mode == kModeEnter && entryFrames >= 2) || mode == kModePlay) {
-            const ShadowGame::HandOff r = tryHandOff(real);
-            if (r != ShadowGame::HandOff::Wait || mode == kModePlay) { handOffArmed = false; if (r != ShadowGame::HandOff::Done) retire(real.ram[kRoomId]); }
-        }
-    }
     const bool plain = mode == kModePlay && level == 0 && real.ram[kMenuState] == 0 && real.ram[kPaused] == 0;
     wasOverworldPlay = mode == kModePlay && level == 0;
     if (plain && (int)real.ram[kRoomId] != base) reconcile(real);
@@ -292,6 +262,10 @@ void ShadowSet::update(Nes& real) {
     if (plain && bridge && bridgeHold == 0) bridgeHold = kBridgeHold;
     if (real.ram[kMenuState] != 0 || real.ram[kPaused] != 0) return;  // the inventory / pause: the game stands still, so do the shadows
     stepAll();
+    if (handOffArmed && mode == kModePlay) {                          // Link has walked into the screen and the game plays again: the shadow's creatures take over where the shadow is NOW
+        const ShadowGame::HandOff r = tryHandOff(real);               // (not earlier: the game does not move its monsters while Link walks in, the shadow does)
+        handOffArmed = false; if (r != ShadowGame::HandOff::Done) retire(real.ram[kRoomId]);
+    }
     if (plain)
         for (ShadowGame* g : active)                                   // (a failed shadow gets another go after a pause, a few times)
             if (g->state() == ShadowGame::State::Failed && g->failedFor() >= ShadowGame::kRetryDelay) g->retry(real, (uint32_t)(real.cpu.totalCycles >> 3) + (uint32_t)g->room() * 31u);

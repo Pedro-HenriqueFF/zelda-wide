@@ -283,7 +283,8 @@ void Widescreen::renderCore(Nes& nes, double windowAspect, Canvas& out) {
     if (kind == Kind::Overworld && view.mode == kModePlay && view.level == 0) { const int pl = paletteLuma(nes.ppu.palette); if (pl > 0) owRefLuma = pl; }
     // (stairs, a cave, a cellar: the game fades its picture by palette; the shadows' monsters on it fade the same way)
     const int shadowFade = kind == Kind::Transition && owRefLuma > 0 ? std::clamp(paletteLuma(nes.ppu.palette) * 256 / owRefLuma, 0, 256) : 256;
-    const int shadowCur = (view.mode == kModeStairs || view.mode == kModeCellar) && shadows ? shadows->baseRoom() : view.room;      // (the stairs' RoomId is already the cellar's)
+    // (the stairs' RoomId is already the cellar's: while Link walks down the game's own monsters are on the picture, once it fades into the cellar the screen's shadow is)
+    const int shadowCur = view.mode == kModeStairs && shadows ? shadows->baseRoom() : (view.mode == kModeCellar ? -1 : view.room);
     if (lighting && (layout != Layout::Plain || mazeShown) && (kind == Kind::Overworld || kind == Kind::OverworldOdd))   // what glows (moving things only while the game plays; statues always)
         gatherLights(nes, view, (view.room & 15) * ROOM_W, (view.room >> 4) * ROOM_H, slot, true, view.mode == kModePlay);
     else if (lighting && layout != Layout::Plain && (kind == Kind::Transition || kind == Kind::OverworldIntro || kind == Kind::Cave)) {   // (also while a dungeon is entered: the overworld is still on screen)
@@ -292,6 +293,15 @@ void Widescreen::renderCore(Nes& nes, double windowAspect, Canvas& out) {
         gatherStaticLights(nes, sr, slot, false, (sr & 15) * ROOM_W, (sr >> 4) * ROOM_H);
     }
     else lightSources.clear();
+    if (trace && shadows && shadows->enabled) {                          // --trace: what the neighbour screens are doing (printed when it changes)
+        static int lastScene = -1, lastBridge = -1, lastVisible = -1, lastMode = -1;
+        int vis = 0; for (ShadowGame* g : shadows->games()) vis += g->visible();
+        const int br = shadows->bridgeGame() ? 1 + (shadows->bridgeShowsInPlay() ? 1 : 0) : 0, sc = shadowScene ? 1 : 0;
+        if (sc != lastScene || br != lastBridge || vis != lastVisible || (int)view.mode != lastMode) {
+            std::printf("[trace] shadows: view mode=$%02X scene=%d bridge=%d visible=%d handoff=%d\n", view.mode, sc, br, vis, shadows->handOffPending() ? 1 : 0);
+            lastScene = sc; lastBridge = br; lastVisible = vis; lastMode = view.mode;
+        }
+    }
     if (lighting && shadowScene) gatherShadowLights(shadowCur, slot, true);
     const bool dungeonView = view.level != 0 && layout == Layout::Plain && (kind == Kind::Interior || kind == Kind::Transition);   // (rooms sliding, stairs, cellars, the death scene)
     if (!dungeonView) { dungeonDim = dungeonLit = 0; wasScroll = false; frozenOn = false; staleObjects = false; }

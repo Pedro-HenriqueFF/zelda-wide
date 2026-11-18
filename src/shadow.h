@@ -20,8 +20,9 @@ public:
     static constexpr int kHopTimeout = 900;       // frames a hop may take (a scroll is ~64 frames, loading ~60 more)
     static constexpr int kMaxAttempts = 3, kRetryDelay = 120;
     static constexpr int kSettleFrames = 120;     // frames after arriving (monsters poof in, then roam)
-    static constexpr int kWanderX0 = 0x28, kWanderX1 = 0xD0, kWanderY0 = 0x6D, kWanderY1 = 0xBD, kWanderPause = 90;   // where the stand-in Link strolls (ObjX / ObjY)
-    static constexpr float kWanderSpeed = 1.0f, kItemClear = 14.0f;
+    static constexpr int kWanderX0 = 0x28, kWanderX1 = 0xD0, kWanderY0 = 0x6D, kWanderY1 = 0xBD;   // where the stand-in Link strolls (ObjX / ObjY)
+    static constexpr float kWanderSpeed = 1.5f, kItemClear = 14.0f;
+    static constexpr uint8_t kChaseKeep = 7;       // ChaseLongTimer is kept up so that the game never switches the monsters' target
     static constexpr uint8_t kUnkillable = 0xFF;  // HeartValues / HeartPartial of the stand-in Link: full, many hearts (a hit can never kill him)
 
     ShadowGame() = default;                       // (the Nes is made when the shadow starts: a disabled feature costs no memory)
@@ -39,7 +40,6 @@ public:
     int  attemptsMade() const { return attempts; }
     const char* lastFailure() const { return lastFail; }      // why the shadow failed the last time (for shadow_debug.txt)
     void followRealLink(const Nes& real);          // its stand-in Link stops strolling and stands where the real Link does (the hand-off)
-    bool carryItems(Nes& real) const;
     Nes& nes() { return *game; }
     const Nes& nes() const { return *game; }
     bool retry(const Nes& real, uint32_t seed);   // a failed shadow starts again (at most kMaxAttempts times for one set of shadows)
@@ -48,7 +48,7 @@ public:
     void reset() { st = State::Idle; target = -1; }
     // Hand-off: Link has walked into this shadow's screen and the real game has just loaded it with fresh monsters: the shadow's monsters (slots 1-12 and their variables)
     // replace them, so what was seen in the margin goes on instead of popping. Only when the real game's monsters are kinds the shadow has too. False: nothing copied.
-    enum class HandOff { Done, Wait, No };        // Done: copied; Wait: the real game has not made its monsters yet; No: nothing to take over (other kinds, not on this screen)
+    enum class HandOff { Done, No };               // Done: the shadow's creatures were copied into the game; No: there is no shadow of the screen
     HandOff handOffTo(Nes& real);
     // The screen Link is leaving (the game has just entered its leave-the-room mode 6, the monsters are as they were): a shadow that carries on from exactly that state.
     bool captureFrom(const Nes& real, int room, uint32_t seed);
@@ -66,7 +66,7 @@ private:
     void placeLinkNeutral();
     void wanderLink();
     float lx = 0, ly = 0, wx = 0, wy = 0;   // the stand-in Link's place and where he strolls to
-    int wpause = 0; bool wanders = false; uint32_t wrng = 1;
+    bool wanders = false; uint32_t wrng = 1;
     const char* lastFail = nullptr;
 };
 
@@ -74,7 +74,7 @@ private:
 class ShadowSet {
 public:
     static constexpr int kSpinStepsPerFrame = 3;  // a shadow that is still spinning up runs this many frames per real frame (it appears sooner)
-    static constexpr int kBridgeHold = 3;         // updates the entered screen's shadow stays after the hand-off (the picture is one frame behind the game)
+    static constexpr int kBridgeHold = 4;         // updates the entered screen's shadow stays after the hand-off; it is drawn for the first pictures of play too (they are a frame or more behind the game and have no monsters yet)
     bool enabled = false;
     // Called once per real frame after it ran. Keeps the shadows going: new neighbours are made when the real game is in plain overworld play in a new room
     // (shadows that are still neighbours go on as they are, the others are dropped), the screen Link is leaving is captured as a shadow, the hand-off after a
@@ -91,7 +91,7 @@ public:
     bool handOffPending() const { return handOffArmed; }
     const ShadowGame* bridgeGame() const { return bridge; }
     // The first picture of plain play after a walk in has no monsters yet either (the game draws them one frame later): the bridge is still drawn for it.
-    bool bridgeShowsInPlay() const { return bridge && bridgeHold == kBridgeHold - 1; }
+    bool bridgeShowsInPlay() const { return bridge && bridgeHold > 0 && bridgeHold < kBridgeHold; }
     ShadowGame::HandOff tryHandOff(Nes& real);
     bool handOff(Nes& real) { return tryHandOff(real) == ShadowGame::HandOff::Done; }
     bool dump(const char* path) const;            // shadow_debug.txt: per shadow its state and the monsters/items in its object slots
@@ -101,7 +101,7 @@ public:
     int base = -1;
     bool handOffArmed = false, departed = false, wasOverworldPlay = false, walking = false;
     int lastMode = -1;
-    int entryFrames = 0, bridgeHold = 0;
+    int bridgeHold = 0;
     ShadowGame* bridge = nullptr;
 private:
     void reconcile(Nes& real);
