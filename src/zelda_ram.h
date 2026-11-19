@@ -27,6 +27,8 @@ constexpr uint16_t kRoomObjTemplateType = 0x35F, kRoomObjTemplateLen = 0x21;   /
 // gravestone, $63/$67 rock wall, $64 tree, $68 push block, $69 nothing. The shadow games never hand these over: a raft that a shadow's Link had started would drag the real Link.
 constexpr uint8_t kTypeSceneryFirst = 0x61, kTypeSceneryLast = 0x69;
 constexpr uint16_t kChaseOtherTarget = 0x60, kChaseLongTimer = 0x4A;   // (Variables.inc 14, 34: who the monsters chase; Z_07.asm 1895-1950)
+constexpr uint16_t kActiveMonsterShots = 0x34C;      // ActiveMonsterShots (Variables.inc 97): counted monster shots, at most 4; DestroyCountedMonsterShot decrements it (Z_04.asm 919); at 4 no monster can shoot (Z_04.asm 11347)
+constexpr uint16_t kWorldIsFillingHearts = 0x63;     // World_IsFillingHearts (Variables.inc 37): the Great Fairy's heart animation, Link halted
 constexpr uint16_t kRandom = 0x18;                   // Random: the 13-byte shift register the NMI handler scrambles every frame (Z_07.asm 511-531, Variables.inc 8)
 constexpr int kRandomLen = 13;
 constexpr uint16_t kObjShoveDir = 0xC0, kObjShoveDistance = 0xD3, kObjGridOffset = 0x394, kObjInvincibilityTimer = 0x4F0;   // (Variables.inc 54, 55, 103, 147)
@@ -69,6 +71,6 @@ constexpr uint8_t kStateBombFlash = 0x13;             // a bomb in this state to
 constexpr uint8_t kTypeMonsterSwordShot = 0x57;       // ObjType of a monster's sword shot
 // ObjTypes that glow (UpdateObject_JumpTable, Z_07.asm ~5321: type = index): $3F guard fire, $40 standing fire, $55/$56 fireballs (Zora,
 // Aquamentus, Gleeok, statues...), $57 monster sword shot, $58/$59 wizzrobe magic. A dungeon room is dark when AttrsE bit 7 is set.
-constexpr uint8_t kTypeArmos = 0x1E, kTypePondFairy = 0x2F, kTypeItem = 0x60;   // (same table: UpdateArmos, UpdatePondFairy, UpdateItem)
+constexpr uint8_t kTypeArmos = 0x1E, kTypePondFairy = 0x2F, kTypeItem = 0x60, kTypeDock = 0x61;   // (same table: UpdateArmos, UpdatePondFairy, UpdateItem)
 constexpr uint8_t kTypeGuardFire = 0x3F, kTypeStandingFire = 0x40, kTypeFireballA = 0x55, kTypeFireballB = 0x56, kTypeMagicA = 0x58, kTypeMagicB = 0x59;
 }

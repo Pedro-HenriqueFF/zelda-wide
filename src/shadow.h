@@ -66,6 +66,7 @@ private:
     uint8_t hearts = 0, heartPart = 0;
     void issueHop();
     void placeLinkNeutral();
+    void containScenery();                        // undoes a raft ride / Great Fairy heart animation the stand-in Link has set off
     void wanderLink();
     float lx = 0, ly = 0, wx = 0, wy = 0;   // the stand-in Link's place and where he strolls to
     bool wanders = false; uint32_t wrng = 1;
@@ -76,6 +77,7 @@ private:
 class ShadowSet {
 public:
     static constexpr int kSpinStepsPerFrame = 3;  // a shadow that is still spinning up runs this many frames per real frame (it appears sooner)
+    static constexpr int kKeepRadius = 2;          // shadows up to this many screens from Link go on (the 8 around him are started, the others only kept)
     static constexpr int kDropDelay = 2;           // updates the shadows stay after Link is inside a dungeon (the last pictures of the walk in)
     static constexpr int kBridgeHold = 4;         // updates the entered screen's shadow stays after the hand-off; it is drawn for the first pictures of play too (they are a frame or more behind the game and have no monsters yet)
     bool enabled = false;
@@ -100,7 +102,7 @@ public:
     bool handOff(Nes& real) { return tryHandOff(real) == ShadowGame::HandOff::Done; }
     bool dump(const char* path) const;            // shadow_debug.txt: per shadow its state and the monsters/items in its object slots
     std::string summary() const;                  // one line for --trace
-    ShadowGame pool[12];
+    ShadowGame pool[26];                                              // (the 24 screens within two of Link + a spare for the capture of the screen he leaves)
     std::vector<ShadowGame*> active;
     int base = -1;
     bool handOffArmed = false, departed = false, wasOverworldPlay = false;

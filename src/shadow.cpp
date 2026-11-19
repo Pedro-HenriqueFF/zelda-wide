@@ -143,6 +143,18 @@ void ShadowGame::wanderLink() {
     r[kChaseOtherTarget] = 0; r[kChaseLongTimer] = kChaseKeep;                                // (the monsters always chase him, never the mirrored point: the game flips the target when this timer runs out)
 }
 
+// The raft (UpdateDock, Z_04.asm 3863-3955) and the Great Fairy's hearts (UpdatePondFairy, Z_04.asm 3374-3400) are set off by where the PLAYER stands (X exactly the dock's and Y $3D / $7D;
+// Y $AD and X $70-$80) and then halt Link: nothing a screen Link is not in may play them. They are undone as soon as the game has started them: the first frame of either draws nothing
+// yet (the raft and the hearts are drawn from the second frame on), so nothing of it is ever seen.
+void ShadowGame::containScenery() {
+    uint8_t* r = game->ram; bool undone = false;
+    for (int slot = 1; slot <= 12; slot++) {
+        const uint8_t t = r[kObjType + slot], s = r[kObjState + slot];
+        if ((t == kTypeDock && s != 0) || (t == kTypePondFairy && (s == 1 || s == 2))) { r[kObjState + slot] = 0; undone = true; }
+    }
+    if (undone) { r[kObjState] = 0; r[kWorldIsFillingHearts] = 0; }          // (Link was halted for it)
+}
+
 // The shadow stands in for the real game's monsters for a few more frames (the hand-off): its Link stands where the real one does.
 void ShadowGame::followRealLink(const Nes& real) {
     wanders = false; game->ram[kObjX] = real.ram[kObjX]; game->ram[kObjY] = real.ram[kObjY];
@@ -168,12 +180,15 @@ void ShadowGame::stepFrame() {
             }
         } else if (++hopFrames > kHopTimeout) { st = State::Failed; lastFail = "timeout during a hop"; }
     }
+    if (!n.cpu.inNmi() && st != State::Failed) containScenery();
     if (st == State::Failed) return;
     if (st == State::Settling || st == State::Ready) r[kUndergroundExitType] = 1;     // (the stand-in Link must not take a cave or stairs under his feet: CheckWarps returns at once, Z_05.asm 7250)
     if (wanders && (st == State::Settling || st == State::Ready) && !n.cpu.inNmi()) wanderLink();
     n.runFrame();
+    if (!n.cpu.inNmi()) containScenery();
     // Nothing flies in a shadow: the monsters' shots are deleted (a shot spawned this frame is drawn once at most) and the picture's 8x16 flag is kept for the drawing.
     for (int slot = 1; slot <= 12; slot++) if (r[kObjType + slot] >= kTypeFirstProjectile && r[kObjType + slot] <= kTypeLastProjectile) r[kObjType + slot] = 0;
+    r[kActiveMonsterShots] = 0;                                       // (the game counts live monster shots and stops all shooting at 4: a monster that wants to shoot but cannot stands still for 46 of every 48 frames. The deleted shots must not stay counted)
     n.ppu.lineCtrl[100] = n.ppu.ctrl;
     if ((st == State::Settling || st == State::Ready) && (r[kGameMode] != kModePlay || r[kRoomId] != target)) { st = State::Failed; lastFail = r[kGameMode] != kModePlay ? "left play mode" : "left its screen"; }     // (it went somewhere it should not: not drawn any more)
     if (st == State::Ready || st == State::Settling) {                                              // (the picture of the monsters: the stand-in Link is left out)
@@ -210,7 +225,7 @@ void ShadowSet::reconcile(Nes& real) {
     for (ShadowGame* g : active) {
         const int dx = (g->room() & 15) - (room & 15), dy = (g->room() >> 4) - (room >> 4);
         if (g == bridge) { keep.push_back(g); continue; }             // (the screen Link has entered: its monsters are the real game's now; the shadow only bridges the picture, and goes on until it is dropped)
-        if (g->room() != room && std::abs(dx) <= 1 && std::abs(dy) <= 1 && g->state() != ShadowGame::State::Failed) keep.push_back(g);
+        if (g->room() != room && std::abs(dx) <= kKeepRadius && std::abs(dy) <= kKeepRadius && g->state() != ShadowGame::State::Failed) keep.push_back(g);   // (two screens away: only kept, never started: walking in and out quickly must not make them start afresh)
         else g->reset();
     }
     active = keep; base = room;

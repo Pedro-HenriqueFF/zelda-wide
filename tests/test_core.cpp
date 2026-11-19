@@ -624,8 +624,8 @@ static void testShadow() {
             q->ram[0x12] = 5; q->ram[0x13] = 0; ps.update(*q);                                              // in play: handed off, the shadows are planned for screen 36
             CHECK_EQ(ps.baseRoom(), 0x36); CHECK(find(ps, 0x36) == g36); CHECK(ps.bridgeGame() == g36);      // (the entered screen's shadow only bridges the picture now: it stays in the list (and moves) until it is dropped)
             CHECK(find(ps, 0x25) == g25 && find(ps, 0x45) == g45 && find(ps, 0x35) == dep);                 // still neighbours: the same shadows, not respawned
-            CHECK(g25->frames() > f25); CHECK(find(ps, 0x24) == nullptr);                                   // 24 is two screens from 36: dropped
-            CHECK(find(ps, 0x37) && find(ps, 0x27) && find(ps, 0x47)); CHECK_EQ(ps.active.size(), (size_t)9);   // (8 neighbours and the bridging shadow of 36)
+            CHECK(g25->frames() > f25); CHECK(find(ps, 0x24) != nullptr);                                   // 24 is two screens from 36: kept (walking in and out quickly must not restart the screens), never started that far out
+            CHECK(find(ps, 0x37) && find(ps, 0x27) && find(ps, 0x47)); CHECK_EQ(ps.active.size(), (size_t)12);  // (8 neighbours, the bridging shadow of 36 and the 3 kept two screens away)
             for (int i = 0; i < ShadowSet::kBridgeHold + 1; i++) ps.update(*q);
             CHECK(ps.bridgeGame() == nullptr);
             const int fa = g45->frames(); ps.animate(); CHECK(g45->frames() > fa);                           // (the glide: the real game is paused, the shadows run)
@@ -635,8 +635,24 @@ static void testShadow() {
             Nes& g0 = set.active[1]->nes(); g0.ram[0x351] = 0x53; g0.ram[0x352] = 0x11; g0.ram[0x353] = 0x5C; g0.ram[0x354] = 0x5D; set.update(*r);
             CHECK_EQ(g0.ram[0x351], 0); CHECK_EQ(g0.ram[0x352], 0x11); CHECK_EQ(g0.ram[0x353], 0); CHECK_EQ(g0.ram[0x354], 0x5D);
         }
+        {   // the game counts the monster shots in the air and lets nobody shoot at 4: shots deleted here must not stay counted (monsters stood still for 46 of every 48 frames)
+            Nes& g0 = set.active[2]->nes(); g0.ram[0x34C] = 4; g0.ram[0x351] = 0x57; set.update(*r);
+            CHECK_EQ(g0.ram[0x351], 0); CHECK_EQ(g0.ram[0x34C], 0);
+        }
+        {   // the raft and the Great Fairy's hearts are set off by where the player stands: a screen's stand-in Link must never start them (and is not left halted by them)
+            Nes& g0 = set.active[3]->nes();
+            g0.ram[0x34F + 11] = 0x61; g0.ram[0xAC + 11] = 2;                                               // a raft going up
+            g0.ram[0x34F + 12] = 0x2F; g0.ram[0xAC + 12] = 1;                                               // the fairy's animation begun
+            g0.ram[0x34F + 10] = 0x2F; g0.ram[0xAC + 10] = 3;                                               // (a fairy that has finished stays finished)
+            g0.ram[0x34F + 9] = 0x61; g0.ram[0xAC + 9] = 0;                                                 // (a raft at rest)
+            g0.ram[0xAC] = 0x40; g0.ram[0x63] = 0x40;                                                       // Link halted, hearts filling
+            set.update(*r);
+            CHECK_EQ(g0.ram[0xAC + 11], 0); CHECK_EQ(g0.ram[0xAC + 12], 0); CHECK_EQ(g0.ram[0xAC + 10], 3); CHECK_EQ(g0.ram[0xAC + 9], 0);
+            CHECK_EQ(g0.ram[0xAC], 0); CHECK_EQ(g0.ram[0x63], 0);
+            for (int sl = 9; sl <= 12; sl++) g0.ram[0x34F + sl] = 0;
+        }
         // the real game changes room: new shadows; not in plain play: they wait; in a dungeon: they are gone
-        r->ram[0xEB] = 0x36; set.update(*r); CHECK_EQ(set.baseRoom(), 0x36); CHECK_EQ(set.active.size(), (size_t)8);
+        r->ram[0xEB] = 0x36; set.update(*r); CHECK_EQ(set.baseRoom(), 0x36); CHECK_EQ(set.active.size(), (size_t)14);   // (8 around 36: 3 new, 3 kept from 35's ring and 3 two screens away)
         {   // (still neighbours: kept with their age; the new ones just began)
             ShadowGame *n37 = nullptr, *k45 = nullptr; for (ShadowGame* g : set.active) { if (g->room() == 0x37) n37 = g; if (g->room() == 0x45) k45 = g; }
             CHECK(n37 != nullptr && n37->frames() <= ShadowSet::kSpinStepsPerFrame); CHECK(k45 != nullptr && k45->frames() > ShadowSet::kSpinStepsPerFrame * 5);
@@ -726,6 +742,43 @@ static void testShadow() {
         CHECK_EQ(q->ram[0x18], 0xAB); CHECK_EQ(hs.ram[0x70], 9); CHECK_EQ(hs.ram[0x84], 99);
         for (int i = 0; i < 5; i++) h.stepFrame();
         CHECK_EQ(hs.ram[0x70], 9);                                  // (and he stays there: no more strolling)
+    }
+    {   // enter a screen and leave it again within a moment (main.cpp: mode 6 seen by update, the scroll skipped, armHandOff, the glide = animate, then mode 4 and play): both screens keep their monsters
+        auto find = [&](ShadowSet& st, int room) -> ShadowGame* { for (ShadowGame* g : st.active) if (g->room() == room) return g; return nullptr; };
+        for (int quick : {1, 3, 6, 10, 14}) {
+            auto q = realGame(0x35); ShadowSet ps; ps.enabled = true;
+            for (int i = 0; i < 330; i++) ps.update(*q);
+            auto cross = [&](int to, int glide) {                                                                  // what one screen change looks like to the shadow set
+                q->ram[0x12] = 6; ps.update(*q);
+                q->ram[0xEB] = (uint8_t)to; q->ram[0x12] = 4; q->ram[0x13] = 1; for (int sl = 1; sl <= 12; sl++) q->ram[0x34F + sl] = 0; q->ram[0x71] = 1;
+                ps.armHandOff(*q);
+                for (int i = 0; i < glide; i++) ps.animate();
+                for (int i = 0; i < 3; i++) ps.update(*q);                                                         // (mode 4: Link walks in)
+                q->ram[0x12] = 5; q->ram[0x13] = 0; q->ram[0x350] = 0x10;                                          // the game's own fresh monster
+            };
+            q->ram[0x350] = 0x10; q->ram[0x71] = 33;
+            cross(0x36, 12); ps.update(*q);                                                                         // (hand-off of 36 happens in this first play update)
+            for (int i = 1; i < quick; i++) ps.update(*q);
+            ShadowGame* a = find(ps, 0x35); CHECK(a != nullptr && a->ready());
+            const int fa = a ? a->frames() : 0; const uint8_t xa = a ? a->nes().ram[0x71] : 0;
+            q->ram[0x71] = 70;                                                                                      // 36's monster at the moment Link leaves
+            cross(0x35, 12);
+            ShadowGame* b = find(ps, 0x36); CHECK(b != nullptr && b->ready());                                      // 36 became a shadow, its monster where Link left it
+            if (b) CHECK(b->nes().ram[0x71] >= 70 && b->nes().ram[0x71] <= 90);
+            ps.update(*q);
+            CHECK(!ps.handOffPending());
+            CHECK(q->ram[0x71] != 1 && q->ram[0x71] != 0);                                                          // 35's monsters are the shadow's, not the fresh ones
+            CHECK(a && a->frames() >= fa);
+            (void)xa;
+        }
+    }
+    {   // two screens away is still kept (a quick walk there and back must not start them afresh), three screens away is dropped
+        auto find = [&](ShadowSet& st, int room) -> ShadowGame* { for (ShadowGame* g : st.active) if (g->room() == room) return g; return nullptr; };
+        auto q = realGame(0x35); ShadowSet ps; ps.enabled = true;
+        for (int i = 0; i < 330; i++) ps.update(*q);
+        ShadowGame* k26 = find(ps, 0x26); CHECK(k26 != nullptr);
+        q->ram[0xEB] = 0x38; ps.update(*q);                                                                  // (columns 4-6 around 35; the new base is column 8)
+        CHECK(find(ps, 0x26) == k26); CHECK(find(ps, 0x25) == nullptr); CHECK(find(ps, 0x45) == nullptr);   // 26 is two columns away: kept; 25 and 45 are three: gone
     }
     {   // scenery (the dock of the raft, rocks, trees) is never handed over: a raft a shadow's Link had started would drag the real Link up the screen
         auto q = realGame(0x35); ShadowGame g; g.adopt(*q, 0x35); Nes& hs = g.nes();
