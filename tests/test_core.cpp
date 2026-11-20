@@ -745,11 +745,12 @@ static void testShadow() {
     }
     {   // enter a screen and leave it again within a moment (main.cpp: mode 6 seen by update, the scroll skipped, armHandOff, the glide = animate, then mode 4 and play): both screens keep their monsters
         auto find = [&](ShadowSet& st, int room) -> ShadowGame* { for (ShadowGame* g : st.active) if (g->room() == room) return g; return nullptr; };
-        for (int quick : {1, 3, 6, 10, 14}) {
+        for (int quick : {1, 2, 3, 4, 5, 6, 10, 14}) {
             auto q = realGame(0x35); ShadowSet ps; ps.enabled = true;
             for (int i = 0; i < 330; i++) ps.update(*q);
             auto cross = [&](int to, int glide) {                                                                  // what one screen change looks like to the shadow set
                 q->ram[0x12] = 6; ps.update(*q);
+                q->ram[0x12] = 7; ps.update(*q);                                                                   // (the next frame: the game is in mode 7; main.cpp skips the rest of the scroll)
                 q->ram[0xEB] = (uint8_t)to; q->ram[0x12] = 4; q->ram[0x13] = 1; for (int sl = 1; sl <= 12; sl++) q->ram[0x34F + sl] = 0; q->ram[0x71] = 1;
                 ps.armHandOff(*q);
                 for (int i = 0; i < glide; i++) ps.animate();
@@ -779,6 +780,32 @@ static void testShadow() {
         ShadowGame* k26 = find(ps, 0x26); CHECK(k26 != nullptr);
         q->ram[0xEB] = 0x38; ps.update(*q);                                                                  // (columns 4-6 around 35; the new base is column 8)
         CHECK(find(ps, 0x26) == k26); CHECK(find(ps, 0x25) == nullptr); CHECK(find(ps, 0x45) == nullptr);   // 26 is two columns away: kept; 25 and 45 are three: gone
+    }
+    {   // an armos that woke in a screen's shadow left floor (stairs for the secret one) where its statue stood: the real game's statues on those squares follow when Link comes back
+        auto find = [&](ShadowSet& st, int room) -> ShadowGame* { for (ShadowGame* g : st.active) if (g->room() == room) return g; return nullptr; };
+        auto q = realGame(0x35); ShadowSet ps; ps.enabled = true;
+        for (int i = 0; i < 330; i++) ps.update(*q);
+        ShadowGame* sh = find(ps, 0x36); CHECK(sh && sh->ready());
+        auto put = [&](Nes& n, int col, int row, uint8_t a, uint8_t b, uint8_t c, uint8_t d) {                    // a 2x2 square, column-major
+            n.cart.cpuWrite((uint16_t)(0x6530 + col * 22 + row), a); n.cart.cpuWrite((uint16_t)(0x6530 + col * 22 + row + 1), b);
+            n.cart.cpuWrite((uint16_t)(0x6530 + (col + 1) * 22 + row), c); n.cart.cpuWrite((uint16_t)(0x6530 + (col + 1) * 22 + row + 1), d); };
+        auto get = [&](Nes& n, int col, int row) { return (int)n.cart.cpuRead((uint16_t)(0x6530 + col * 22 + row)); };
+        put(sh->nes(), 4, 6, 0x70, 0x71, 0x72, 0x73);                                                             // the secret armos woke: stairs
+        put(sh->nes(), 10, 2, 0x26, 0x26, 0x26, 0x26);                                                            // another one: floor
+        put(sh->nes(), 20, 8, 0xC0, 0xC1, 0xC2, 0xC3);                                                            // one that did not wake
+        put(*q, 4, 6, 0xC0, 0xC1, 0xC2, 0xC3); put(*q, 10, 2, 0xC0, 0xC1, 0xC2, 0xC3); put(*q, 20, 8, 0xC0, 0xC1, 0xC2, 0xC3);   // the game's fresh layout: all statues
+        q->ram[0x301] = 0;
+        q->ram[0xEB] = 0x36; q->ram[0x12] = 4; ps.armHandOff(*q); ps.update(*q);
+        CHECK_EQ(get(*q, 4, 6), 0x70); CHECK_EQ(get(*q, 5, 7), 0x73); CHECK_EQ(get(*q, 10, 2), 0x26); CHECK_EQ(get(*q, 20, 8), 0xC0);
+        CHECK_EQ((int)q->ram[0x301], 20);                                                                         // two squares queued for the PPU: 2 x (2 records of 5 bytes)
+        // the first square (scan order: column 4): records {hi, lo, $82, t, t'} {hi, lo+1, $82, t, t'}, nametable row (8 + 6) * 8 = 112 -> $2000 + 112 * 4 + 4 = $21C4
+        CHECK(q->ram[0x302] == 0x21 && q->ram[0x303] == 0xC4 && q->ram[0x304] == 0x82 && q->ram[0x305] == 0x70 && q->ram[0x306] == 0x71);
+        CHECK(q->ram[0x307] == 0x21 && q->ram[0x308] == 0xC5 && q->ram[0x309] == 0x82 && q->ram[0x30A] == 0x72 && q->ram[0x30B] == 0x73);
+        CHECK_EQ((int)q->ram[0x302 + 20], 0xFF);                                                                  // (the end marker follows the last record; the next square overwrites it, as in the game)
+        ps.update(*q); CHECK_EQ((int)q->ram[0x301], 20);                                                          // done once: no statue left there, nothing queued again
+        // a screen with no shadow of its own is left as the game laid it out
+        auto q2 = realGame(0x35); ShadowSet p2; p2.enabled = true; put(*q2, 4, 6, 0xC0, 0xC1, 0xC2, 0xC3); q2->ram[0x301] = 0; q2->ram[0x12] = 5; p2.update(*q2);
+        CHECK_EQ(get(*q2, 4, 6), 0xC0); CHECK_EQ((int)q2->ram[0x301], 0);
     }
     {   // scenery (the dock of the raft, rocks, trees) is never handed over: a raft a shadow's Link had started would drag the real Link up the screen
         auto q = realGame(0x35); ShadowGame g; g.adopt(*q, 0x35); Nes& hs = g.nes();

@@ -203,5 +203,44 @@ void section32(Ctx& t) {
         CHECK(k); CHECK(!t);
         setState(5, room); frames(m, 2, aspect); m.sparkles.clear();
     }
+    {   // what Link had out when he left a screen still lights it in its shadow: fire, a bomb's flash, the sword's shot, trails of the boomerang and arrows; an armos glows
+        m.fog = false; m.lighting = true; set.enabled = true;
+        set.pool[0].adopt(*nes, east); Nes& sn = set.pool[0].nes(); for (int sl = 1; sl <= 0x13; sl++) { sn.ram[kObjType + sl] = 0; sn.ram[kObjState + sl] = 0; }
+        set.active = {&set.pool[0]}; m.shadows = &set;
+        const float ex = (float)((east & 15) * ROOM_W), ey = (float)((east >> 4) * ROOM_H);
+        auto count = [&](bool sparkle) { m.lightSources.clear(); m.sparkles.clear(); m.gatherShadowLights(room, slot, sparkle); return m.lightSources.size(); };
+        CHECK_EQ(count(true), (size_t)0);
+        sn.ram[kObjX + kSlotBombA] = 100; sn.ram[kObjY + kSlotBombA] = 120; sn.ram[kObjState + kSlotBombA] = 0x20;                    // the candle's fire
+        CHECK_EQ(count(true), (size_t)1);
+        if (!m.lightSources.empty()) { CHECK_EQ((int)m.lightSources[0].x, (int)(ex + 108)); CHECK_EQ((int)m.lightSources[0].y, (int)(ey + 120 - HUD_H + 8)); CHECK(m.lightSources[0].r > 200 && m.lightSources[0].b < 100); }
+        sn.ram[kObjState + kSlotBombA] = 0; sn.ram[kObjState + kSlotBombB] = kStateBombFlash; sn.ram[kObjX + kSlotBombB] = 60; sn.ram[kObjY + kSlotBombB] = 90;   // a bomb's flash: a big light
+        CHECK_EQ(count(true), (size_t)1);
+        if (!m.lightSources.empty()) CHECK(m.lightSources[0].radius >= 100);
+        sn.ram[kObjState + kSlotBombB] = 0; sn.ram[kObjState + kSlotShot] = 0x10; sn.ram[kObjX + kSlotShot] = 80; sn.ram[kObjY + kSlotShot] = 100;      // the sword's shot
+        CHECK_EQ(count(true), (size_t)1);
+        sn.ram[kObjState + kSlotShot] = 0; sn.ram[kObjState + 0x0F] = 1; sn.ram[kObjX + 0x0F] = 50; sn.ram[kObjY + 0x0F] = 100;                       // the boomerang: a trail of white sparkles, no light
+        CHECK_EQ(count(true), (size_t)0); CHECK(!m.sparkles.empty());
+        for (const auto& sp : m.sparkles) CHECK(sp.kind == 1);
+        CHECK_EQ(count(false), (size_t)0); CHECK(m.sparkles.empty());
+        sn.ram[kObjState + 0x0F] = 0; sn.ram[kObjState + kSlotLastWeapon] = 1; sn.ram[kObjDir + kSlotLastWeapon] = 1; sn.ram[kObjX + kSlotLastWeapon] = 70; sn.ram[kObjY + kSlotLastWeapon] = 100;   // an arrow
+        CHECK_EQ(count(true), (size_t)0); CHECK(!m.sparkles.empty());
+        sn.ram[kObjState + kSlotLastWeapon] = 0;
+        sn.ram[kObjType + 4] = kTypeArmos; sn.ram[kObjX + 4] = 120; sn.ram[kObjY + 4] = 120;                                                        // an armos that woke: a blue glow
+        CHECK_EQ(count(true), (size_t)1);
+        if (!m.lightSources.empty()) CHECK(m.lightSources[0].b > m.lightSources[0].r);
+        sn.ram[kObjType + 4] = 0; set.active.clear(); m.shadows = nullptr; m.lightSources.clear(); m.sparkles.clear();
+    }
+    {   // an armos that woke on the screen east (its shadow's tile map has stairs / floor there) is gone from the screen's statues here too; without the shadow the decode shows the statue
+        m.shadows = nullptr; m.roomTilesFor(*nes, east);
+        const int col = 4, row = 6, a = col * OverworldMap::TILE_ROWS + row, b = a + OverworldMap::TILE_ROWS;
+        m.testSetStatue(east, col, row);
+        set.pool[0].adopt(*nes, east); set.active = {&set.pool[0]};
+        for (int dc = 0; dc < 2; dc++) for (int dr = 0; dr < 2; dr++) set.pool[0].nes().cart.cpuWrite((uint16_t)(0x6530 + (col + dc) * 22 + row + dr), (uint8_t)(0x70 + dc * 2 + dr));
+        m.shadows = &set; const uint8_t* with = m.roomTilesFor(*nes, east);
+        CHECK(with[a] == 0x70 && with[a + 1] == 0x71 && with[b] == 0x72 && with[b + 1] == 0x73);
+        for (int dc = 0; dc < 2; dc++) for (int dr = 0; dr < 2; dr++) set.pool[0].nes().cart.cpuWrite((uint16_t)(0x6530 + (col + dc) * 22 + row + dr), (uint8_t)(0xC0 + dc * 2 + dr));
+        CHECK(m.roomTilesFor(*nes, east)[a] != 0x70);                                                                // the statue stands in the shadow: nothing replaced
+        m.shadows = nullptr;
+    }
     m.shadows = nullptr;
 }

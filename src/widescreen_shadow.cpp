@@ -55,12 +55,36 @@ void Widescreen::gatherShadowLights(int curRoom, int slot, bool sparkle, bool wi
             if (id == zelda::kItemHeartContainer) { lightSources.push_back({x, y, 32, 0.4f, 0.0f, 255, 90, 100}); if (sparkle) spawnSparkles(x, y, 3); }
             else if (id == zelda::kItemTriforce) { lightSources.push_back({x, y, 44, 0.6f, 0.0f, 255, 215, 90}); if (sparkle) spawnSparkles(x, y, 2); }
         }
+        // What Link had out when he left the screen goes on in its shadow, with the light and the trail it had: the sword's shot, the boomerang and arrows (a trail of white
+        // sparkles), bombs (the flash) and fire (the candle). The same numbers as gatherLights.
+        {
+            auto at = [&](int s, float& x, float& y) { x = (float)(ox + n.ram[zelda::kObjX + s] + 8); y = (float)(oy + n.ram[zelda::kObjY + s] - HUD_H + 8); };
+            float x, y;
+            if (n.ram[zelda::kObjState + zelda::kSlotShot] >= 0x10) { at(zelda::kSlotShot, x, y); lightSources.push_back({x, y, 52, 0.95f, 0.0f, 190, 225, 255}); }
+            for (int sl : {0x0F, (int)zelda::kSlotLastWeapon})
+                if (n.ram[zelda::kObjState + sl]) {
+                    at(sl, x, y);
+                    if (sl != 0x0F) { const int d = n.ram[zelda::kObjDir + sl]; x += d == 1 ? 4.0f : d == 2 ? -4.0f : 0.0f; y += d == 4 ? 4.0f : d == 8 ? -4.0f : 0.0f; if (d == 1 || d == 2) y += 4.0f; }
+                    if (sparkle) spawnSparkles(x, y, 1);
+                }
+            for (int sl : {zelda::kSlotBombA, zelda::kSlotBombB}) {
+                const int st = n.ram[zelda::kObjState + sl];
+                if ((st & 0xF0) == 0x20) { at(sl, x, y); lightSources.push_back({x, y, 64, 1.0f * lighting::flicker(t, sl), 0.0f, 255, 150, 60}); }
+                else if (st == zelda::kStateBombFlash) { at(sl, x, y); lightSources.push_back({x, y, 120, 1.4f, 0.0f, 255, 225, 150}); }
+            }
+        }
         for (int s = 1; s <= 12; s++) {
             const int ty = n.ram[zelda::kObjType + s], st = n.ram[zelda::kObjState + s];
             if (!ty) continue;
             const float x = (float)(ox + n.ram[zelda::kObjX + s] + 8), y = (float)(oy + n.ram[zelda::kObjY + s] - HUD_H + 8);
             if (ty == zelda::kTypeGuardFire || ty == zelda::kTypeStandingFire) lightSources.push_back({x, y, 56, 0.9f * lighting::flicker(t, s), 0.0f, 255, 150, 60});
             else if (ty == zelda::kTypePondFairy) { lightSources.push_back({x, y, 40, 0.5f, 0.0f, 255, 190, 230}); if (sparkle) spawnSparkles(x, y, 0); }
+            else if (ty == zelda::kTypeArmos) {                                                          // an armos that woke glows blue (the secret one, still in its place: red)
+                bool secret = false;
+                for (int k = 0; k < 7; k++) secret = secret || (zelda::kSecretArmosRoom[k] == g->room() && n.ram[zelda::kObjX + s] == zelda::kSecretArmosX[k] && n.ram[zelda::kObjY + s] == zelda::kSecretArmosY);
+                const float pulse = 0.85f + 0.15f * std::sin(t * 0.08f + s);
+                lightSources.push_back(secret ? lighting::Source{x, y, 34, 0.9f * pulse, 0.5f, 255, 60, 40} : lighting::Source{x, y, 32, 0.8f * pulse, 0.45f, 70, 130, 255});
+            }
             else if (ty == zelda::kTypeItem && st) itemGlow(st, x, y, s, sparkle);
         }
     }

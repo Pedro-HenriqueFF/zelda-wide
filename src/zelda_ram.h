@@ -59,6 +59,10 @@ constexpr uint16_t kInvCandle = 0x65B;   // 0 none, 1 blue candle, 2 red candle
 constexpr uint16_t kQuestNumbers = 0x62D;   // QuestNumbers: one byte per save slot (0 first quest, 1 second)
 constexpr uint16_t kNames = 0x638, kWorldFlags = 0x67F;
 constexpr uint16_t kPlayAreaTiles = 0x6530;
+constexpr int kPlayCols = 32, kPlayRows = 22;            // PlayAreaTiles is column-major: tile (col, row) at kPlayAreaTiles + col * kPlayRows + row
+constexpr uint16_t kDynTileBufLen = 0x301, kDynTileBuf = 0x302;   // the PPU transfer buffer the NMI handler empties every frame (Variables.inc 83-84)
+constexpr uint8_t kArmosTile = 0xC0;                     // an armos statue = the 2x2 tiles $C0 $C1 / $C2 $C3 (primary square $C0)
+constexpr int kHudRows = 8;                              // the status bar's tile rows above the play area
 constexpr uint16_t kLevelWorldFlagsAddr = 0x6BAF;     // LevelInfo_WorldFlagsAddr (Variables.inc): pointer to the level's room-flag table (2 bytes)
 constexpr uint16_t kAttrsA = 0x687E, kAttrsB = 0x68FE, kAttrsE = 0x6A7E, kAttrsD = 0x69FE, kAttrsF = 0x6AFE;
 

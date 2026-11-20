@@ -44,6 +44,7 @@ public:
     void followRealLink(const Nes& real);          // its stand-in Link stops strolling and stands where the real Link does (the hand-off)
     Nes& nes() { return *game; }
     const Nes& nes() const { return *game; }
+    uint8_t tile(int col, int row) const;         // the screen's tile map in this shadow's own game (an armos that woke left floor or stairs here)
     bool retry(const Nes& real, uint32_t seed);   // a failed shadow starts again (at most kMaxAttempts times for one set of shadows)
     int  failedFor() const { return failedFrames; }
     bool hasNes() const { return game != nullptr; }
@@ -95,6 +96,8 @@ public:
     void armHandOff(const Nes& real);
     bool handOffPending() const { return handOffArmed; }
     const ShadowGame* bridgeGame() const { return bridge; }
+    const ShadowGame* visibleShadow(int room) const { for (const ShadowGame* g : active) if (g->room() == room && g->visible()) return g; return nullptr; }
+    int carryTiles(Nes& real);                    // armos that woke in the shadow's game: the real game's statues on those squares become what the shadow has (floor, stairs)
     bool hasVisible(int room) const { for (const ShadowGame* g : active) if (g->room() == room && g->visible()) return true; return false; }   // a shadow of this screen is there to be drawn
     // The first picture of plain play after a walk in has no monsters yet either (the game draws them one frame later): the bridge is still drawn for it.
     bool bridgeShowsInPlay() const { return bridge && bridgeHold > 0 && bridgeHold < kBridgeHold; }

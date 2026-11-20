@@ -1,21 +1,43 @@
 // Widescreen: what the game is doing (capture of the emulated RAM into a ViewSnapshot), the cache of decoded overworld screens and their
 // secrets, and the fog's discovery / unfogging state. (Moved out of widescreen.cpp byte for byte.)
 #include "widescreen_internal.h"
+#include "shadow.h"
 
 const uint8_t* Widescreen::roomTiles(Nes& nes, int room) {
     int layout = nes.cart.cpuRead(kAttrsD + room) & 0x7F;
     bool secret = nes.ram[kWorldFlags + room] & 0x80;
-    int key = layout | (secret ? 0x100 : 0);
     Cached& c = cache[room];
-    if (c.key != key) {
+    // An armos that woke on the screen left floor (the secret one: stairs) in the screen's shadow: those statues are gone here too (the shadow's own tile map says so).
+    const ShadowGame* sh = shadows && c.nStatue > 0 && (c.key & 0x1FF) == (layout | (secret ? 0x100 : 0)) ? shadows->visibleShadow(room) : nullptr;
+    int woke = 0;
+    for (int i = 0; sh && i < c.nStatue; i++) if (sh->tile(c.statue[i] >> 8, c.statue[i] & 0xFF) != zelda::kArmosTile) woke |= 1 << i;
+    if (c.key >= 0 && (c.key >> 9) == woke && (c.key & 0x1FF) == (layout | (secret ? 0x100 : 0))) return c.tiles;
+    if (c.key < 0 || (c.key & 0x1FF) != (layout | (secret ? 0x100 : 0)) || (c.key >> 9) != woke) {
         map.decodeRoom(layout, secret, c.tiles, c.secret);
         if (!secret)                                                     // the armos that hides stairs (or the Power Bracelet): 2x2 tiles
             for (int k = 0; k < 7; k++)
                 if (kSecretArmosRoom[k] == room)
                     for (int dc = 0; dc < 2; dc++) for (int dr = 0; dr < 2; dr++)
                         c.secret[((kSecretArmosX[k] >> 3) + dc) * OverworldMap::TILE_ROWS + ((kSecretArmosY - HUD_H) >> 3) + dr] = SecretArmos;
+        const bool plain = (c.key & 0x1FF) != (layout | (secret ? 0x100 : 0)) || c.key < 0;
+        if (plain) {                                                     // (the statues of the plain decode: where an armos can wake)
+            c.nStatue = 0;
+            for (int col = 0; col + 1 < OverworldMap::TILE_COLS; col++)
+                for (int row = 0; row + 1 < OverworldMap::TILE_ROWS && c.nStatue < 8; row++) {
+                    const int a = col * OverworldMap::TILE_ROWS + row, b = a + OverworldMap::TILE_ROWS;
+                    if (c.tiles[a] == zelda::kArmosTile && c.tiles[a + 1] == zelda::kArmosTile + 1 && c.tiles[b] == zelda::kArmosTile + 2 && c.tiles[b + 1] == zelda::kArmosTile + 3) c.statue[c.nStatue++] = (uint16_t)(col << 8 | row);
+                }
+        }
+        for (int i = 0; sh && i < c.nStatue; i++) {                      // (woke: the shadow's four tiles, and no secret mark)
+            if (!(woke & (1 << i))) continue;
+            const int col = c.statue[i] >> 8, row = c.statue[i] & 0xFF;
+            for (int dc = 0; dc < 2; dc++) for (int dr = 0; dr < 2; dr++) {
+                c.tiles[(col + dc) * OverworldMap::TILE_ROWS + row + dr] = sh->tile(col + dc, row + dr);
+                c.secret[(col + dc) * OverworldMap::TILE_ROWS + row + dr] = SecretNone;
+            }
+        }
         c.anySecret = std::any_of(c.secret, c.secret + OverworldMap::TILES, [](uint8_t k) { return k != 0; });
-        c.key = key;
+        c.key = (layout | (secret ? 0x100 : 0)) | woke << 9;
     }
     return c.tiles;
 }

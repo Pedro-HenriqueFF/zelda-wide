@@ -274,7 +274,7 @@ void ShadowSet::update(Nes& real) {
     dropDelay = -1;
     // The overworld goes on in every other mode: scrolls, caves, stairs, the walk in and out. The shadows are stepped once per frame like the real game would.
     if (mode == kModeLeave && level == 0) {                           // Link is leaving the screen: it carries on as a shadow from exactly this state
-        if (!departed) { departed = true; if (ShadowGame* g = capture(real, real.ram[kRoomId])) bridge = g; }   // (the picture of mode 6 has no monsters either: the shadow stands in for them)
+        if (!departed) { departed = true; if (ShadowGame* g = capture(real, real.ram[kRoomId])) { bridge = g; bridgeHold = 0; } }   // (the picture of mode 6 has no monsters either: the shadow stands in for them)
     } else if (mode != kModeStairs) departed = false;
     // A cave, stairs or a dungeon entrance: the screen Link stood on carries on as a shadow from the start of the walk in (RoomId may already be the cellar's). The game hides its
     // monsters from the picture of the walk on, so the shadow's are drawn instead (Widescreen::render).
@@ -285,10 +285,11 @@ void ShadowSet::update(Nes& real) {
     const bool plain = mode == kModePlay && level == 0 && real.ram[kMenuState] == 0 && real.ram[kPaused] == 0;
     wasOverworldPlay = mode == kModePlay && level == 0;
     if (plain && (int)real.ram[kRoomId] != base) reconcile(real);
-    if (mode == kModeLeaveCave && level == 0 && !bridge) for (ShadowGame* g : active) if (g->visible() && g->room() == (int)real.ram[kRoomId]) bridge = g;   // (the overworld comes back without its monsters: the screen's shadow stands in for them)
+    if (mode == kModeLeaveCave && level == 0 && !bridge) for (ShadowGame* g : active) if (g->visible() && g->room() == (int)real.ram[kRoomId]) { bridge = g; bridgeHold = 0; }   // (the overworld comes back without its monsters: the screen's shadow stands in for them)
     if (plain && bridge && bridgeHold == 0) bridgeHold = kBridgeHold;
     if (real.ram[kMenuState] != 0 || real.ram[kPaused] != 0) return;  // the inventory / pause: the game stands still, so do the shadows
     stepAll();
+    if (level == 0 && (mode == kModeEnter || mode == kModePlay)) carryTiles(real);
     if (handOffArmed && mode == kModePlay) {                          // Link has walked into the screen and the game plays again: the shadow's creatures take over where the shadow is NOW
         const ShadowGame::HandOff r = tryHandOff(real);               // (not earlier: the game does not move its monsters while Link walks in, the shadow does)
         handOffArmed = false; if (r != ShadowGame::HandOff::Done) retire(real.ram[kRoomId]);
@@ -304,13 +305,14 @@ ShadowGame* ShadowSet::capture(const Nes& real, int room) {
     if (!g || !g->captureFrom(real, room, (uint32_t)(real.cpu.totalCycles >> 5) + (uint32_t)room * 131u)) return nullptr;
     for (ShadowGame* o : active) if (o != g && o->room() == g->room()) o->reset();
     active.erase(std::remove_if(active.begin(), active.end(), [](ShadowGame* o) { return o->state() == ShadowGame::State::Idle; }), active.end());
+    if (bridge && bridge->state() == ShadowGame::State::Idle) { bridge = nullptr; bridgeHold = 0; }   // (the old bridging shadow of this screen was just replaced)
     active.push_back(g);
     return g;
 }
 
 // Nothing could be taken over from the shadow of the screen Link is in: it is dropped (two simulations of one screen would run side by side).
 void ShadowSet::retire(int room) {
-    for (ShadowGame* g : active) if (g->room() == room) { g->reset(); if (g == bridge) bridge = nullptr; }
+    for (ShadowGame* g : active) if (g->room() == room) { g->reset(); if (g == bridge) { bridge = nullptr; bridgeHold = 0; } }
     active.erase(std::remove_if(active.begin(), active.end(), [](ShadowGame* o) { return o->state() == ShadowGame::State::Idle; }), active.end());
 }
 
@@ -319,6 +321,33 @@ void ShadowSet::dropBridge() {
     bridge->reset();
     active.erase(std::remove(active.begin(), active.end(), bridge), active.end());
     bridge = nullptr;
+}
+
+uint8_t ShadowGame::tile(int col, int row) const { return game->cart.cpuRead((uint16_t)(kPlayAreaTiles + col * kPlayRows + row)); }
+
+// An armos that woke on a screen left the floor (or, the secret one, the stairs) where its statue stood, and the shadow of that screen kept it so; the game lays the screen
+// out afresh when Link comes back: its statues are put back to what the shadow has, the way the game itself changes them (ChangeTileObjTiles, Z_07.asm 1145: the
+// four tiles of PlayAreaTiles and a transfer of the same four tiles to the nametable through the PPU buffer). A statue whose tiles still are the statue's is left alone.
+int ShadowSet::carryTiles(Nes& real) {
+    const ShadowGame* g = visibleShadow(real.ram[kRoomId]);
+    if (!g || real.ram[kCurLevel] != 0) return 0;
+    int n = 0;
+    for (int col = 0; col + 1 < kPlayCols; col += 2)
+        for (int row = 0; row + 1 < kPlayRows; row += 2) {
+            const uint16_t a = (uint16_t)(kPlayAreaTiles + col * kPlayRows + row), b = (uint16_t)(a + kPlayRows);
+            if (real.cart.cpuRead(a) != kArmosTile || real.cart.cpuRead(a + 1) != kArmosTile + 1 || real.cart.cpuRead(b) != kArmosTile + 2 || real.cart.cpuRead(b + 1) != kArmosTile + 3) continue;
+            const uint8_t t0 = g->tile(col, row), t1 = g->tile(col, row + 1), t2 = g->tile(col + 1, row), t3 = g->tile(col + 1, row + 1);
+            if (t0 == kArmosTile && t1 == kArmosTile + 1 && t2 == kArmosTile + 2 && t3 == kArmosTile + 3) continue;       // (still a statue there)
+            const int len = real.ram[kDynTileBufLen];
+            if (len + 11 > 0xFE) return n;                                                                               // (the buffer is full: the next frame)
+            const int y = (kHudRows + row) * 8, ppu = 0x2000 + y * 4 + col;                                              // (MapScreenPosToPpuAddr, Z_01.asm 4901)
+            const uint8_t rec[11] = {(uint8_t)(ppu >> 8), (uint8_t)ppu, 0x82, t0, t1, (uint8_t)(ppu >> 8), (uint8_t)(ppu + 1), 0x82, t2, t3, 0xFF};
+            std::memcpy(&real.ram[kDynTileBuf + len], rec, sizeof rec);
+            real.ram[kDynTileBufLen] = (uint8_t)(len + 10);
+            real.cart.cpuWrite(a, t0); real.cart.cpuWrite(a + 1, t1); real.cart.cpuWrite(b, t2); real.cart.cpuWrite(b + 1, t3);
+            n++;
+        }
+    return n;
 }
 
 ShadowGame::HandOff ShadowSet::tryHandOff(Nes& real) {
