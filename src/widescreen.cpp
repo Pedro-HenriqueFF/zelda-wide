@@ -292,7 +292,10 @@ void Widescreen::renderCore(Nes& nes, double windowAspect, Canvas& out) {
     const bool takeover = shadowScene && shadows && view.mode == kModeStairs && shadows->hasVisible(shadows->baseRoom());
     const int shadowCur = takeover ? -1 : (view.mode == kModeStairs && shadows ? shadows->baseRoom() : (view.mode == kModeCellar ? -1 : view.room));
     // The screen's own shadow is drawn over the picture while the game's picture has no monsters: leaving a screen (mode 6), walking into a screen or out of a cave, the first pictures of play.
-    const bool bridgeNow = shadows && shadows->bridgeGame() && shadowScene && (view.mode == kModeEnter || view.mode == kModeLeaveCave || view.mode == kModeLeave || (view.mode == kModePlay && shadows->bridgeShowsInPlay()));
+    // (and in play whenever the game's own picture has no monster sprites at all: the frame in which the game changes mode, or the first ones of a screen, are drawn without them)
+    bool gameDrawsMonsters = false;
+    for (int i = 24; i < 64 && !gameDrawsMonsters; i++) { const uint8_t* o = &nes.ppu.oam[i * 4]; gameDrawsMonsters = o[0] < 0xEF && o[0] + 1 + 16 > HUD_H && !hudSpriteEntry(nes.ppu.oam, i); }   // (objects use OAM entries 24-63: SpriteOffsets, Z_01.asm 5007)
+    const bool bridgeNow = shadows && shadows->bridgeGame() && shadowScene && (view.mode == kModeEnter || view.mode == kModeLeaveCave || view.mode == kModeLeave || (view.mode == kModePlay && (shadows->bridgeShowsInPlay() || !gameDrawsMonsters)));
     if (lighting && (layout != Layout::Plain || mazeShown) && (kind == Kind::Overworld || kind == Kind::OverworldOdd))   // what glows (moving things only while the game plays; statues always)
         gatherLights(nes, view, (view.room & 15) * ROOM_W, (view.room >> 4) * ROOM_H, slot, true, view.mode == kModePlay);
     else if (lighting && layout != Layout::Plain && (kind == Kind::Transition || kind == Kind::OverworldIntro || kind == Kind::Cave)) {   // (also while a dungeon is entered: the overworld is still on screen)

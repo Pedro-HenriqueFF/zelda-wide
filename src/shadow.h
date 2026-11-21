@@ -47,6 +47,7 @@ public:
     Nes& nes() { return *game; }
     const Nes& nes() const { return *game; }
     void aimLink(int x, int y) { aimOn = true; aimX = (uint8_t)x; aimY = (uint8_t)y; }   // the next frame the stand-in Link stands here (a returning boomerang flies to him)
+    int boomWait = 0;                             // relay calls a boomerang has hovered at the edge of the screen waiting for the next one to take it
     uint8_t tile(int col, int row) const;         // the screen's tile map in this shadow's own game (an armos that woke left floor or stairs here)
     bool retry(const Nes& real, uint32_t seed);   // a failed shadow starts again (at most kMaxAttempts times for one set of shadows)
     int  failedFor() const { return failedFrames; }
@@ -84,6 +85,7 @@ public:
     static constexpr int kSpinStepsMax = 16, kSpinBudget = 24, kStartsPerUpdate = 3;   // shadows still spinning up run up to kSpinStepsMax frames per real frame (kSpinBudget frames per thread shared by all of them); at most kStartsPerUpdate new shadows are made per real frame
     static int spinSteps(int spinners, int threads) { return threads <= 1 || spinners <= 0 ? kSpinStepsPerFrame : std::clamp(kSpinBudget * threads / spinners, (int)kSpinStepsPerFrame, kSpinStepsMax); }
     static constexpr int kSpinStepsPerFrame = 3;  // a shadow that is still spinning up runs this many frames per real frame (it appears sooner)
+    static constexpr int kRelayPatience = 240;     // relay calls a boomerang waits at an edge for the next screen to take it
     static constexpr int kRelayBand = 14;          // px from a screen's edge where a returning boomerang is handed to the next screen
     static constexpr int kKeepRadius = 2;          // shadows up to this many screens from Link go on (the 8 around him are started, the others only kept)
     static constexpr int kDropDelay = 2;           // updates the shadows stay after Link is inside a dungeon (the last pictures of the walk in)
@@ -93,7 +95,7 @@ public:
     // (shadows that are still neighbours go on as they are, the others are dropped), the screen Link is leaving is captured as a shadow, the hand-off after a
     // scroll is carried out; all shadows are stepped (in parallel). Dropped in dungeons.
     void update(Nes& real);
-    void animate();                               // one frame for every shadow while the real game is paused (the glide between screens): the monsters keep moving
+    void animate(Nes* real = nullptr);                               // one frame for every shadow while the real game is paused (the glide between screens): the monsters keep moving
     void clear();
     const std::vector<ShadowGame*>& games() const { return active; }
     int baseRoom() const { return base; }
@@ -128,7 +130,7 @@ public:
 private:
     void reconcile(Nes& real);
     void topUp(Nes& real);
-    void relayBoomerangs(Nes& real);
+    void relayBoomerangs(Nes& real);   // (also in the glide: the shadows' boomerangs must not be caught by a stand-in Link while the real game is not yet playing)
     ShadowGame* capture(const Nes& real, int room);
     void dropBridge();
     void retire(int room);

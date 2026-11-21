@@ -548,7 +548,7 @@ static void testShadow() {
         CHECK(!g.start(*r, 0, 0, 1)); CHECK(g.start(*r, 1, 0, 1)); CHECK(g.state() == ShadowGame::State::SpinUp);
     }
     {   // all eight neighbours walk to their screens with the game's own mode changes and appear; the real game is untouched
-        auto r = realGame(0x35); ShadowSet set; set.enabled = true;
+        auto r = realGame(0x35); ShadowSet set; set.enabled = true; set.forceSpinSteps = ShadowSet::kSpinStepsPerFrame;
         for (int i = 0; i < 330; i++) set.update(*r);
         CHECK_EQ(set.active.size(), (size_t)8);
         std::set<int> rooms; bool allReady = true, monsters = true, linkStandsIn = true;
@@ -612,13 +612,13 @@ static void testShadow() {
         }
         {   // the screen Link leaves becomes a shadow, shadows that are still neighbours go on (nothing respawns), the others are dropped, new ones are made
             auto find = [&](ShadowSet& st, int room) -> ShadowGame* { for (ShadowGame* g : st.active) if (g->room() == room) return g; return nullptr; };
-            auto q = realGame(0x35); ShadowSet ps; ps.enabled = true;
+            auto q = realGame(0x35); ShadowSet ps; ps.enabled = true; ps.forceSpinSteps = ShadowSet::kSpinStepsPerFrame;
             for (int i = 0; i < 330; i++) ps.update(*q);
             CHECK_EQ(ps.active.size(), (size_t)8);
             ShadowGame *g25 = find(ps, 0x25), *g45 = find(ps, 0x45), *g24 = find(ps, 0x24), *g36 = find(ps, 0x36);
             CHECK(g25 && g45 && g24 && g36); const int f25 = g25->frames();
             {   // a shadow is drawn from the moment it has arrived on its screen (settling): the monsters' spawn smoke is seen, not only the finished monsters
-                auto early = realGame(0x35); ShadowSet es; es.enabled = true; bool settlingSeen = false, hiddenWhileSpinning = true;
+                auto early = realGame(0x35); ShadowSet es; es.enabled = true; es.forceSpinSteps = ShadowSet::kSpinStepsPerFrame; bool settlingSeen = false, hiddenWhileSpinning = true;
                 for (int i = 0; i < 45; i++) { es.update(*early); for (ShadowGame* g : es.active) { settlingSeen = settlingSeen || (g->state() == ShadowGame::State::Settling && g->visible()); hiddenWhileSpinning = hiddenWhileSpinning && (g->state() != ShadowGame::State::SpinUp || !g->visible()); } }
                 CHECK(settlingSeen); CHECK(hiddenWhileSpinning);
             }
@@ -675,7 +675,7 @@ static void testShadow() {
     }
     {   // the overworld goes on while Link is in a cave, down stairs or in a dungeon, and the screen he left carries on as a shadow (no monsters popping up when he comes back)
         auto find = [&](ShadowSet& st, int room) -> ShadowGame* { for (ShadowGame* g : st.active) if (g->room() == room) return g; return nullptr; };
-        auto r = realGame(0x35); ShadowSet set; set.enabled = true;
+        auto r = realGame(0x35); ShadowSet set; set.enabled = true; set.forceSpinSteps = ShadowSet::kSpinStepsPerFrame;
         for (int i = 0; i < 330; i++) set.update(*r);
         CHECK_EQ(set.active.size(), (size_t)8);
         r->ram[0x350] = 0x10; r->ram[0x71] = 40;
@@ -708,7 +708,7 @@ static void testShadow() {
         r->ram[0x12] = 4; r->ram[0x13] = 0; for (int sl = 1; sl <= 12; sl++) r->ram[0x34F + sl] = 0; set.update(*r);
         r->ram[0x350] = 0x10; r->ram[0x351] = 0x10; r->ram[0x12] = 5; set.update(*r); CHECK(!set.handOffPending()); CHECK_EQ(r->ram[0x350], 0x10); CHECK_EQ(r->ram[0x351], 0);      // (nothing is dropped and respawned: the screen is as it was)
         // stairs: RoomId is already the cellar's during the walk and when it is over; a dungeon: CurLevel is already the level's, and the shadows live only through the walk
-        auto q = realGame(0x35); ShadowSet ds; ds.enabled = true;
+        auto q = realGame(0x35); ShadowSet ds; ds.enabled = true; ds.forceSpinSteps = ShadowSet::kSpinStepsPerFrame;
         for (int i = 0; i < 330; i++) ds.update(*q);
         q->ram[0xEB] = 0x3F; q->ram[0x12] = 0x10; q->ram[0x350] = 0x10; ds.update(*q);
         ShadowGame* sd = find(ds, 0x35); CHECK(sd != nullptr && sd->ready()); CHECK(find(ds, 0x3F) == nullptr); CHECK_EQ(ds.active.size(), (size_t)9);
@@ -716,7 +716,7 @@ static void testShadow() {
         q->ram[0x12] = 9; ds.update(*q); CHECK_EQ(find(ds, 0x35), sd);                                      // (the cellar's fade begins: the same shadow)
         if (sd) { CHECK_EQ(sd->nes().ram[0xEB], 0x35); CHECK_EQ(sd->nes().ram[0x10], 0); CHECK_EQ(sd->nes().ram[0x12], 5); }
         const int fs = sd ? sd->frames() : 0; for (int i = 0; i < 30; i++) ds.update(*q); CHECK(sd && sd->frames() == fs + 30);
-        auto dq = realGame(0x35); ShadowSet dd; dd.enabled = true;
+        auto dq = realGame(0x35); ShadowSet dd; dd.enabled = true; dd.forceSpinSteps = ShadowSet::kSpinStepsPerFrame;
         for (int i = 0; i < 330; i++) dd.update(*dq);
         dq->ram[0x10] = 3; dq->ram[0x12] = 0x10; for (int i = 0; i < 4; i++) dd.update(*dq);                // a dungeon entrance: the shadows go on through the walk (the screen's own included)
         CHECK_EQ(dd.active.size(), (size_t)9); CHECK(find(dd, 0x35) != nullptr);
@@ -725,7 +725,7 @@ static void testShadow() {
         dq->ram[0x12] = 5; dd.update(*dq); CHECK(dd.active.empty());
     }
     {   // the room item (the overworld's heart container of room $5F: slot $13, no object type) is kept clear of too: the stand-in must not take it as he strolls over the lake
-        auto r = realGame(0x35); ShadowSet set; set.enabled = true;
+        auto r = realGame(0x35); ShadowSet set; set.enabled = true; set.forceSpinSteps = ShadowSet::kSpinStepsPerFrame;
         for (int i = 0; i < 330; i++) set.update(*r);
         Nes& sh = set.active[0]->nes();
         sh.ram[0xAC + 0x13] = 0; sh.ram[0xAB] = 0x1A; sh.ram[0x70 + 0x13] = 0x78; sh.ram[0x84 + 0x13] = 0x8D - 3;   // the heart container right where he starts (type stays 0)
@@ -735,7 +735,7 @@ static void testShadow() {
         sh.ram[0xAB] = 0x3F; sh.ram[0xAC + 0x13] = 0xFF;                                                          // (no item, or one that is not active: nothing to keep clear of)
     }
     {   // the stand-in Link strolls about (monsters steer towards the player: a Link who never moves gathers them all around him) but never takes an item
-        auto r = realGame(0x35); ShadowSet set; set.enabled = true;
+        auto r = realGame(0x35); ShadowSet set; set.enabled = true; set.forceSpinSteps = ShadowSet::kSpinStepsPerFrame;
         for (int i = 0; i < 330; i++) set.update(*r);
         ShadowGame* g = set.active[0]; Nes& sh = g->nes();
         sh.ram[0x34F + 6] = 0x60; sh.ram[0xAC + 6] = 0x22; sh.ram[0x70 + 6] = 0x78; sh.ram[0x84 + 6] = 0x8D - 3;      // an item right where he starts
@@ -765,7 +765,7 @@ static void testShadow() {
     {   // enter a screen and leave it again within a moment (main.cpp: mode 6 seen by update, the scroll skipped, armHandOff, the glide = animate, then mode 4 and play): both screens keep their monsters
         auto find = [&](ShadowSet& st, int room) -> ShadowGame* { for (ShadowGame* g : st.active) if (g->room() == room) return g; return nullptr; };
         for (int quick : {1, 2, 3, 4, 5, 6, 10, 14}) {
-            auto q = realGame(0x35); ShadowSet ps; ps.enabled = true;
+            auto q = realGame(0x35); ShadowSet ps; ps.enabled = true; ps.forceSpinSteps = ShadowSet::kSpinStepsPerFrame;
             for (int i = 0; i < 330; i++) ps.update(*q);
             auto cross = [&](int to, int glide) {                                                                  // what one screen change looks like to the shadow set
                 q->ram[0x12] = 6; ps.update(*q);
@@ -794,7 +794,7 @@ static void testShadow() {
     }
     {   // two screens away is still kept (a quick walk there and back must not start them afresh), three screens away is dropped
         auto find = [&](ShadowSet& st, int room) -> ShadowGame* { for (ShadowGame* g : st.active) if (g->room() == room) return g; return nullptr; };
-        auto q = realGame(0x35); ShadowSet ps; ps.enabled = true;
+        auto q = realGame(0x35); ShadowSet ps; ps.enabled = true; ps.forceSpinSteps = ShadowSet::kSpinStepsPerFrame;
         for (int i = 0; i < 330; i++) ps.update(*q);
         ShadowGame* k26 = find(ps, 0x26); CHECK(k26 != nullptr);
         q->ram[0xEB] = 0x38; ps.update(*q);                                                                  // (columns 4-6 around 35; the new base is column 8)
@@ -802,7 +802,7 @@ static void testShadow() {
     }
     {   // an armos that woke in a screen's shadow left floor (stairs for the secret one) where its statue stood: the real game's statues on those squares follow when Link comes back
         auto find = [&](ShadowSet& st, int room) -> ShadowGame* { for (ShadowGame* g : st.active) if (g->room() == room) return g; return nullptr; };
-        auto q = realGame(0x35); ShadowSet ps; ps.enabled = true;
+        auto q = realGame(0x35); ShadowSet ps; ps.enabled = true; ps.forceSpinSteps = ShadowSet::kSpinStepsPerFrame;
         for (int i = 0; i < 330; i++) ps.update(*q);
         ShadowGame* sh = find(ps, 0x36); CHECK(sh && sh->ready());
         auto put = [&](Nes& n, int col, int row, uint8_t a, uint8_t b, uint8_t c, uint8_t d) {                    // a 2x2 square, column-major
@@ -823,12 +823,12 @@ static void testShadow() {
         CHECK_EQ((int)q->ram[0x302 + 20], 0xFF);                                                                  // (the end marker follows the last record; the next square overwrites it, as in the game)
         ps.update(*q); CHECK_EQ((int)q->ram[0x301], 20);                                                          // done once: no statue left there, nothing queued again
         // coming out of a cave or stairs (mode $A, the fade): the statues are already gone behind the fade, before the first picture
-        auto q4 = realGame(0x35); ShadowSet p4; p4.enabled = true; for (int i = 0; i < 330; i++) p4.update(*q4);
+        auto q4 = realGame(0x35); ShadowSet p4; p4.enabled = true; p4.forceSpinSteps = ShadowSet::kSpinStepsPerFrame; for (int i = 0; i < 330; i++) p4.update(*q4);
         ShadowGame* s4 = find(p4, 0x36); CHECK(s4 != nullptr);
         if (s4) { put(s4->nes(), 6, 4, 0x70, 0x71, 0x72, 0x73); put(*q4, 6, 4, 0xC0, 0xC1, 0xC2, 0xC3); q4->ram[0x301] = 0; q4->ram[0xEB] = 0x36; q4->ram[0x12] = 0x0A; p4.update(*q4);
                  CHECK_EQ(get(*q4, 6, 4), 0x70); CHECK_EQ((int)q4->ram[0x301], 10); }
         // a screen with no shadow of its own is left as the game laid it out
-        auto q2 = realGame(0x35); ShadowSet p2; p2.enabled = true; put(*q2, 4, 6, 0xC0, 0xC1, 0xC2, 0xC3); q2->ram[0x301] = 0; q2->ram[0x12] = 5; p2.update(*q2);
+        auto q2 = realGame(0x35); ShadowSet p2; p2.enabled = true; p2.forceSpinSteps = ShadowSet::kSpinStepsPerFrame; put(*q2, 4, 6, 0xC0, 0xC1, 0xC2, 0xC3); q2->ram[0x301] = 0; q2->ram[0x12] = 5; p2.update(*q2);
         CHECK_EQ(get(*q2, 4, 6), 0xC0); CHECK_EQ((int)q2->ram[0x301], 0);
     }
     {   // scenery (the dock of the raft, rocks, trees) is never handed over: a raft a shadow's Link had started would drag the real Link up the screen
@@ -845,7 +845,7 @@ static void testShadow() {
         CHECK_EQ(q->ram[0x34F + 7], 0x11); CHECK_EQ(q->ram[0x70 + 7], 5);                                       // (and the monster the shadow has a rock for)
         CHECK_EQ(q->ram[0x34F + 8], 0x10); CHECK_EQ(q->ram[0x70 + 8], 88);                                      // (monsters are copied)
         // the stand-in Link never stands where a Link starts the raft (X $60, or $80 in room $55), and never halted
-        auto r = realGame(0x35); ShadowSet set; set.enabled = true;
+        auto r = realGame(0x35); ShadowSet set; set.enabled = true; set.forceSpinSteps = ShadowSet::kSpinStepsPerFrame;
         for (int i = 0; i < 330; i++) set.update(*r);
         Nes& sh = set.active[0]->nes(); bool onDock = false, below = false, above = false, halted = false;
         for (int i = 0; i < 4000; i++) {
@@ -857,7 +857,7 @@ static void testShadow() {
         CHECK(!atPond);
     }
     {   // the picture of leaving a screen (mode 6) has no monsters: the shadow made from that very state stands in for them
-        auto r = realGame(0x35); ShadowSet set; set.enabled = true;
+        auto r = realGame(0x35); ShadowSet set; set.enabled = true; set.forceSpinSteps = ShadowSet::kSpinStepsPerFrame;
         for (int i = 0; i < 330; i++) set.update(*r);
         r->ram[0x12] = 6; set.update(*r);
         ShadowGame* g = nullptr; for (ShadowGame* o : set.active) if (o->room() == 0x35) g = o;
@@ -884,7 +884,7 @@ static void testShadow() {
         r->ram[0x350] = 0x11; CHECK(g.handOffTo(*r) == ShadowGame::HandOff::Done); CHECK_EQ(r->ram[0x350], 0);
     }
     {   // the spawn is seen at the game's own speed: only the unseen walk to the screen is hurried
-        auto r = realGame(0x35); ShadowSet set; set.enabled = true; int settleSteps = 0, spinFast = 0; bool slow = true;
+        auto r = realGame(0x35); ShadowSet set; set.enabled = true; set.forceSpinSteps = ShadowSet::kSpinStepsPerFrame; int settleSteps = 0, spinFast = 0; bool slow = true;
         for (int i = 0; i < 400; i++) {
             std::vector<std::pair<ShadowGame*, std::pair<int, int>>> before;
             for (ShadowGame* g : set.active) before.push_back({g, {g->frames(), (int)g->state()}});
@@ -902,7 +902,7 @@ static void testShadow() {
         CHECK_EQ(ShadowSet::spinSteps(35, 8), 5); CHECK_EQ(ShadowSet::spinSteps(60, 2), 3); CHECK(ShadowSet::spinSteps(1, 8) == ShadowSet::kSpinStepsMax);
     }
     {   // every screen the canvas shows gets a shadow (7 x 5 at the widest zoom), the far ones made from a shadow beside them; screens that are no longer wanted go once they are 3 away
-        auto q = realGame(0x35); ShadowSet ps; ps.enabled = true;
+        auto q = realGame(0x35); ShadowSet ps; ps.enabled = true; ps.forceSpinSteps = ShadowSet::kSpinStepsPerFrame;
         uint8_t want[128] = {}; int wantedN = 0;
         for (int row = 1; row <= 5; row++) for (int col = 2; col <= 8; col++) { want[row * 16 + col] = 1; wantedN++; }
         ps.setWanted(want);
@@ -915,7 +915,7 @@ static void testShadow() {
     }
     {   // a boomerang Link left behind that turns back flies to the REAL Link, screen by screen: it steers to the edge facing him and is handed over there
         auto find = [&](ShadowSet& st, int room) -> ShadowGame* { for (ShadowGame* g : st.active) if (g->room() == room) return g; return nullptr; };
-        auto q = realGame(0x35); ShadowSet ps; ps.enabled = true;
+        auto q = realGame(0x35); ShadowSet ps; ps.enabled = true; ps.forceSpinSteps = ShadowSet::kSpinStepsPerFrame;
         uint8_t w[128] = {}; w[0x37] = 1; ps.setWanted(w);                                                  // (0x37, two screens east, is on the canvas)
         for (int i = 0; i < 900; i++) ps.update(*q);
         ShadowGame* e = find(ps, 0x36); ShadowGame* ee = e; CHECK(e && e->ready());
@@ -930,6 +930,18 @@ static void testShadow() {
         boom(er, 8, 90, 0x40); q->ram[0xAC + B] = 0x10; q->ram[0x34F + B] = 0x5C; ps.update(*q);           // the real boomerang slot is busy: it waits at the edge
         CHECK_EQ((int)er[0x34F + B], 0x5C); CHECK_EQ((int)q->ram[0xAC + B], 0x10);                          // (the real game's own boomerang is untouched)
         q->ram[0xAC + B] = 0; q->ram[0x34F + B] = 0; er[0x34F + B] = 0; er[0xAC + B] = 0;
+        {   // the real game is not playing yet (the glide, the walk in): the boomerang is aimed all the same, hovers at the edge out of the stand-in's reach, and is handed over once it plays
+            boom(er, 40, 100, 0x50); q->ram[0x12] = 4; ps.animate(q.get());
+            CHECK_EQ((int)er[0x70], 0);                                                                    // (aimed at the west edge during the glide)
+            er[0x70 + B] = 0x0A; q->ram[0x34F + B] = 0; ps.animate(q.get()); ps.update(*q);
+            CHECK_EQ((int)er[0x34F + B], 0x5C); CHECK_EQ((int)er[0x70 + B], 14); CHECK_EQ((int)q->ram[0x34F + B], 0);   // (held at the edge band, not handed over)
+            q->ram[0x12] = 5; ps.update(*q); CHECK_EQ((int)q->ram[0x34F + B], 0x5C); CHECK_EQ((int)er[0x34F + B], 0);  // (played: handed over)
+            q->ram[0x34F + B] = 0; q->ram[0xAC + B] = 0;
+            boom(er, 10, 100, 0x50); q->ram[0x12] = 4;                                                       // nobody comes: after a while it is let go
+            for (int i = 0; i < ShadowSet::kRelayPatience + 5; i++) { er[0x70 + B] = 3; ps.animate(q.get()); }
+            CHECK_EQ((int)er[0x70 + B], 3);                                                                // (no longer pinned)
+            er[0x34F + B] = 0; er[0xAC + B] = 0; q->ram[0x12] = 5;
+        }
         ShadowGame* e2 = find(ps, 0x37); CHECK(e2 && e2->ready()); if (!e2) return;                                         // two screens east: shadow to shadow
         boom(e2->nes().ram, 5, 100, 0x40); ps.update(*q);
         CHECK_EQ((int)er[0x34F + B], 0x5C); CHECK_EQ((int)er[0x70 + B], 0xE2); CHECK_EQ((int)e2->nes().ram[0x34F + B], 0);
@@ -938,7 +950,7 @@ static void testShadow() {
         (void)ee;
     }
     {   // a corner screen has only the neighbours it has
-        auto r = realGame(0x00); ShadowSet set; set.enabled = true; set.update(*r);
+        auto r = realGame(0x00); ShadowSet set; set.enabled = true; set.forceSpinSteps = ShadowSet::kSpinStepsPerFrame; set.update(*r);
         CHECK_EQ(set.active.size(), (size_t)3);
     }
     {   // the pool gives the same result as one thread
@@ -956,11 +968,11 @@ static void testShadow() {
         CHECK(g.start(*r, 1, 0, 3));
         for (int f = 0; f < ShadowGame::kHopTimeout + 50 && g.state() == ShadowGame::State::SpinUp; f++) g.stepFrame();
         CHECK(g.state() == ShadowGame::State::Failed);
-        ShadowSet set; set.enabled = true; set.update(*r); for (int i = 0; i < 400; i++) set.update(*r);        // (a failed shadow is not stepped again and does no harm)
+        ShadowSet set; set.enabled = true; set.forceSpinSteps = ShadowSet::kSpinStepsPerFrame; set.update(*r); for (int i = 0; i < 400; i++) set.update(*r);        // (a failed shadow is not stepped again and does no harm)
         CHECK_EQ(r->ram[0x12], 5);
     }
     {   // shadow_debug.txt lists the shadows and the monsters in their slots
-        auto r = realGame(0x35); ShadowSet set; set.enabled = true; for (int i = 0; i < 160; i++) set.update(*r);
+        auto r = realGame(0x35); ShadowSet set; set.enabled = true; set.forceSpinSteps = ShadowSet::kSpinStepsPerFrame; for (int i = 0; i < 160; i++) set.update(*r);
         CHECK(set.dump("shadow_test_dump.txt"));
         std::FILE* f = std::fopen("shadow_test_dump.txt", "r"); std::string txt; char buf[256]; while (f && std::fgets(buf, sizeof buf, f)) txt += buf; if (f) std::fclose(f); std::remove("shadow_test_dump.txt");
         CHECK(txt.find("shadow of screen 36") != std::string::npos); CHECK(txt.find("slot 01 type 10") != std::string::npos);

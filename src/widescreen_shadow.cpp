@@ -7,6 +7,21 @@
 
 // curRoom: the screen Link is in (its shadow is not drawn: the game's own picture shows it), -1 in the glide. onlyCurrent: draw only that screen's shadow (over the game's picture,
 // for the few frames between the end of the glide and the hand-off).
+// A reflection hangs below the sprite's feet by at most its height (16 px) and only shows where it falls on water: a screen of the shadow set needs the water pass for its objects only if some
+// sprite of its OAM (not Link's, not the status bar's) has water (a tile flagged water in the grid) in the 16 px column under its feet or under it.
+bool Widescreen::spritesNearWater(const Nes& n, int room) const {
+    const int gx0 = (room & 15) * 32, gy0 = (room >> 4) * 22;
+    for (int i = 0; i < 64; i++) {
+        if (i == zelda::kLinkOam0 || i == zelda::kLinkOam1) continue;
+        const uint8_t* o = &n.ppu.oam[i * 4];
+        const int sy = o[0] + 1;
+        if (o[0] >= 0xEF || sy + 16 <= HUD_H || hudSpriteEntry(n.ppu.oam, i)) continue;
+        const int ry = sy - HUD_H, x0 = o[3] >> 3, x1 = std::min(31, (o[3] + 15) >> 3), y0 = std::max(0, (ry + 8) >> 3), y1 = std::min(21, (ry + 16 + 16 + 7) >> 3);
+        for (int gy = y0; gy <= y1; gy++) for (int gx = x0; gx <= x1; gx++) if (wwKind[(size_t)(gy0 + gy) * GW + gx0 + gx] & 3) return true;
+    }
+    return false;
+}
+
 void Widescreen::drawShadowSprites(Canvas& out, int camX, int camY, int topBand, int curRoom, int slot, bool onlyCurrent) {
     if (!shadows || !shadows->enabled || !enabled) return;
     const FlashEffect noFlash;
@@ -26,11 +41,7 @@ void Widescreen::drawShadowSprites(Canvas& out, int camX, int camY, int topBand,
         }
         // The monsters reflect in the water of their screen (the bridging shadow too: its reflection must not blink while the game's picture has no monsters) (pass B on that screen, objects only: the scenery's water was done with the terrain).
         if (!waterDone || !waterReflections || terrainW != out.w || terrainH != out.h || terrainCamX != camX || terrainCamY != camY) continue;
-        bool monsters = false, water = false;
-        for (int s = 1; s <= 12 && !monsters; s++) monsters = n.ram[zelda::kObjType + s] != 0;
-        const int gx0 = (g->room() & 15) * 32, gy0 = (g->room() >> 4) * 22;
-        for (int gy = gy0; gy < gy0 + 22 && monsters && !water; gy++) for (int gx = gx0; gx < gx0 + 32; gx++) if (wwKind[(size_t)gy * GW + gx] & 3) { water = true; break; }
-        if (!monsters || !water) continue;
+        if (!spritesNearWater(n, g->room())) continue;                          // (the pass costs ~0.3 ms a screen: only where a reflection could fall on water)
         Nes* sN = fxNes; const Ppu* sP = lightPpu; const int sOx = fxOx, sOy = fxOy, sRoom = fxRoom;
         fxNes = &n; lightPpu = &n.ppu; fxOx = (g->room() & 15) * ROOM_W; fxOy = (g->room() >> 4) * ROOM_H; fxRoom = g->room(); fxIsShadow = true;
         roomWater(out, camX, camY, true, false);

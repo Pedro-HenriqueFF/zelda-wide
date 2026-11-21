@@ -71,8 +71,8 @@ out = os.path.join(d, f'zelda-wide-milestone{n}.zip')
 os.makedirs(d, exist_ok=True)
 with zipfile.ZipFile(out, 'w', zipfile.ZIP_DEFLATED) as z:
     for d, dirs, fs in os.walk(root):
-        # only the project: not build output, downloaded SDL2 (Windows), earlier zips, and never a ROM or what the program writes next to it
-        dirs[:] = [x for x in dirs if x not in ('build', '.git', 'dist', 'third_party')]
+        # only the project: not build output, downloaded SDL2 (Windows), earlier zips, docs/images, and never a ROM or what the program writes next to it
+        dirs[:] = [x for x in dirs if x not in ('build', '.git', 'dist', 'third_party') and os.path.join(d, x) != os.path.join(root, 'docs', 'images')]   # (the README's screenshots stay in the repo, not in the zips)
         for f in fs:
             if not f.endswith(('.tmp', '.zip', '.nes', '.sav', '.fog', '.perf.txt')):
                 p = os.path.join(d, f); z.write(p, os.path.join('zelda-wide', os.path.relpath(p, root)))

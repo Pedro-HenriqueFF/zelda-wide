@@ -241,7 +241,7 @@ int main(int argc, char** argv) {
         if (saveFade > 0 && saveFade < kFadeFrames) {
             saveFade++;
         } else if (wide.gliding()) {
-            shadows.animate();                                   // the monsters of the neighbouring screens keep moving while the camera glides
+            shadows.animate(&nes);                                   // the monsters of the neighbouring screens keep moving while the camera glides
         } else if (!wide.mazeFading()) {
             nes.pad1 = input;
             if (saveFade >= kFadeFrames) { saveFade = 0; holdBlack = 1; wide.requestSave(nes); }

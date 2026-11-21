@@ -136,6 +136,7 @@ public:
     std::vector<Sparkle> sparkles;                 // the fairies' pink sparkles
     uint32_t sparkRng = 1;
     void spawnSparkles(float x, float y, int kind);
+    bool spritesNearWater(const Nes& n, int room) const;   // does a sprite of a shadow's OAM have water within reach of its reflection (the shadows' water pass runs only then)
     const uint8_t* roomTilesFor(Nes& nes, int room) { return roomTiles(nes, room); }                    // (tests) a screen's tiles as drawn: the decode with the armos that woke in its shadow gone
     void testSetStatue(int room, int col, int row) { Cached& c = cache[room]; c.nStatue = 1; c.statue[0] = (uint16_t)(col << 8 | row); for (int dc = 0; dc < 2; dc++) for (int dr = 0; dr < 2; dr++) c.tiles[(col + dc) * OverworldMap::TILE_ROWS + row + dr] = (uint8_t)(0xC0 + dc * 2 + dr); }   // (tests) pretend the decode has a statue there
     void gatherArmosTiles(const uint8_t* tiles, int room, float ox, float oy);   // blue glow on the armos statues of a screen (tiles until they wake), red on the secret one

@@ -281,14 +281,15 @@ void ShadowSet::topUp(Nes& real) {
 // A boomerang Link threw and left behind keeps flying in its screen's shadow; when it turns back it flies to the real Link, however many screens away: it steers to the edge of its
 // screen that faces his, and there it is handed to the next screen (the shadow beside it, or the real game itself), until the real game's own boomerang code brings it to Link.
 void ShadowSet::relayBoomerangs(Nes& real) {
-    if (real.ram[kGameMode] != kModePlay || real.ram[kCurLevel] != 0) return;
+    if (real.ram[kCurLevel] != 0) return;
+    const bool realPlays = real.ram[kGameMode] == kModePlay;          // (the real game can take a boomerang only in play)
     static const uint16_t kCopy[] = {kObjX, kObjY, kObjDir, kObjState, kObjTimer, kObjGridOffset, kObjMovingLimit, kObjPosFrac, kObjQSpeedFrac, kObjAnimCounter, kObjAnimFrame, kObjType};
     const int realRoom = real.ram[kRoomId];
     for (ShadowGame* g : active) {
         if (!g->visible()) continue;
         uint8_t* r = g->nes().ram;
         const int st = r[kObjState + kSlotBoomerang] & 0xF0;
-        if (r[kObjType + kSlotBoomerang] != kTypeBoomerang || (st != 0x40 && st != 0x50)) continue;       // (flying back to the thrower: states $40, $50)
+        if (r[kObjType + kSlotBoomerang] != kTypeBoomerang || (st != 0x40 && st != 0x50)) { g->boomWait = 0; continue; }       // (flying back to the thrower: states $40, $50)
         const int dc = (realRoom & 15) - (g->room() & 15), dr = (realRoom >> 4) - (g->room() >> 4);
         if (!dc && !dr) continue;
         const bool horiz = std::abs(dc) >= std::abs(dr);
@@ -299,9 +300,15 @@ void ShadowSet::relayBoomerangs(Nes& real) {
         if (!atEdge) continue;
         const int next = ShadowGame::targetRoom(g->room(), sx, sy);
         uint8_t* d = nullptr;
-        if (next == realRoom) d = real.ram;
+        if (next == realRoom) d = realPlays ? real.ram : nullptr;
         else for (ShadowGame* o : active) if (o->room() == next && o->visible()) { d = o->nes().ram; break; }
-        if (!d || d[kObjState + kSlotBoomerang] != 0) continue;                                         // (nobody to take it, or its slot is busy: it is caught at the edge)
+        if (!d || d[kObjState + kSlotBoomerang] != 0) {                                                 // (nobody can take it yet: it hovers at the edge, out of reach of the stand-in Link, until somebody can)
+            if (++g->boomWait <= kRelayPatience) {                                                      // (not for ever: when nobody comes it is caught at the edge)
+                if (horiz) r[kObjX + kSlotBoomerang] = (uint8_t)(sx > 0 ? kEdgeRight - kRelayBand : kEdgeLeft + kRelayBand); else r[kObjY + kSlotBoomerang] = (uint8_t)(sy > 0 ? kEdgeDown - kRelayBand : kEdgeUp + kRelayBand);
+            }
+            continue;
+        }
+        g->boomWait = 0;
         for (uint16_t a : kCopy) d[a + kSlotBoomerang] = r[a + kSlotBoomerang];
         if (horiz) d[kObjX + kSlotBoomerang] = (uint8_t)(sx > 0 ? kEdgeLeft + kRelayBand : kEdgeRight - kRelayBand);
         else d[kObjY + kSlotBoomerang] = (uint8_t)(sy > 0 ? kEdgeUp + kRelayBand : kEdgeDown - kRelayBand);
@@ -325,7 +332,7 @@ void ShadowSet::stepAll() {
     });
 }
 
-void ShadowSet::animate() { if (enabled) stepAll(); }
+void ShadowSet::animate(Nes* real) { if (!enabled) return; if (real && real->ram[kCurLevel] == 0) relayBoomerangs(*real); stepAll(); }
 
 // Modes in which the overworld is gone for good (title, file select, game over / continue, saving, the end): the shadows are dropped.
 static bool worldGone(uint8_t mode) { return mode <= kModeFileSelect || mode == kModeContinue || mode == kModeSave || mode >= kModeDeath; }
@@ -357,7 +364,8 @@ void ShadowSet::update(Nes& real) {
     wasOverworldPlay = mode == kModePlay && level == 0;
     if (plain && (int)real.ram[kRoomId] != base) reconcile(real);
     if (mode == kModeLeaveCave && level == 0 && !bridge) for (ShadowGame* g : active) if (g->visible() && g->room() == (int)real.ram[kRoomId]) { bridge = g; bridgeHold = 0; }   // (the overworld comes back without its monsters: the screen's shadow stands in for them)
-    if (plain) { topUp(real); relayBoomerangs(real); }
+    if (plain) topUp(real);
+    if (level == 0) relayBoomerangs(real);
     if (plain && bridge && bridgeHold == 0) bridgeHold = kBridgeHold;
     if (real.ram[kMenuState] != 0 || real.ram[kPaused] != 0) return;  // the inventory / pause: the game stands still, so do the shadows
     stepAll();

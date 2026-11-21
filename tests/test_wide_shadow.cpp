@@ -100,9 +100,13 @@ void section32(Ctx& t) {
         set.bridge = &set.pool[1]; CHECK(differing(enter, picture(&set)) > 100);
         set.bridge = nullptr; CHECK_EQ(differing(enter, picture(&set)), (size_t)0);
         set.bridge = &set.pool[1]; setState(5, room); frames(m, 2, aspect);          // (in play the game's own picture shows its monsters: the bridge is not drawn)
+        uint8_t* gm = &nes->ppu.oam[30 * 4]; const uint8_t gmSave[4] = {gm[0], gm[1], gm[2], gm[3]}; gm[0] = (uint8_t)(HUD_H + 150); gm[1] = 0x20; gm[2] = 0; gm[3] = 40;   // (a monster sprite of the game's own)
         const std::vector<uint32_t> play = picture(nullptr); CHECK_EQ(differing(play, picture(&set)), (size_t)0);
         set.bridge = &set.pool[1]; set.bridgeHold = ShadowSet::kBridgeHold - 1; CHECK(differing(play, picture(&set)) > 100);   // ... except for the first picture of play: the game's monsters are drawn one frame later
         set.bridgeHold = ShadowSet::kBridgeHold; CHECK_EQ(differing(play, picture(&set)), (size_t)0); set.bridgeHold = 0;
+        gm[0] = 0xFF;                                                               // the game's picture has no monsters at all (the frame it changes mode in): the bridge stands in, whatever the hold
+        const std::vector<uint32_t> bare = picture(nullptr); set.bridge = &set.pool[1]; CHECK(differing(bare, picture(&set)) > 100);
+        gm[0] = gmSave[0]; gm[1] = gmSave[1]; gm[2] = gmSave[2]; gm[3] = gmSave[3];
         set.bridge = nullptr;
     }
     {   // the monsters of a neighbouring screen go over everything: a monster that stands at the edge of its screen is not cut off by the game's own room
@@ -239,6 +243,25 @@ void section32(Ctx& t) {
         CHECK_EQ(count(true), (size_t)1);
         if (!m.lightSources.empty()) CHECK(m.lightSources[0].b > m.lightSources[0].r);
         sn.ram[kObjType + 4] = 0; set.active.clear(); m.shadows = nullptr; m.lightSources.clear(); m.sparkles.clear();
+    }
+    {   // the shadows' water pass is for screens with a sprite that has water in reach of its reflection (16 px under the feet), not for every screen with water and a monster
+        if (m.wwKind.size() < (size_t)GW * GH) m.wwKind.assign((size_t)GW * GH, 0);
+        set.pool[0].adopt(*nes, east); Nes& sn = set.pool[0].nes();
+        for (int i = 0; i < 64; i++) sn.ppu.oam[i * 4] = 0xFF;
+        const int gx0 = (east & 15) * 32, gy0 = (east >> 4) * 22;
+        auto water = [&](int tx, int ty, uint8_t v) { m.wwKind[(size_t)(gy0 + ty) * GW + gx0 + tx] = v; };
+        for (int ty = 0; ty < 22; ty++) for (int tx = 0; tx < 32; tx++) water(tx, ty, 0);
+        uint8_t* e = &sn.ppu.oam[30 * 4]; e[0] = (uint8_t)(HUD_H + 80 - 1); e[1] = 0x20; e[2] = 0; e[3] = 100;                  // a sprite at room (100, 80)
+        CHECK(!m.spritesNearWater(sn, east));                                                                      // (no water at all)
+        water(12, 12, 1); CHECK(m.spritesNearWater(sn, east));                                                     // water right under its feet
+        water(12, 12, 0); water(12, 3, 1); CHECK(!m.spritesNearWater(sn, east));                                   // water far above it: nothing falls there
+        water(12, 3, 0); water(12, 20, 2); CHECK(!m.spritesNearWater(sn, east));                                   // water far below: out of reach
+        water(12, 20, 0); water(1, 12, 1); CHECK(!m.spritesNearWater(sn, east));                                   // water beside, not under it
+        water(1, 12, 0); water(14, 11, 1); CHECK(m.spritesNearWater(sn, east));                                    // water under its right half
+        water(14, 11, 0);
+        e[0] = 0xFF; uint8_t* l = &sn.ppu.oam[kLinkOam0 * 4]; l[0] = (uint8_t)(HUD_H + 80 - 1); l[3] = 100; water(12, 12, 1);
+        CHECK(!m.spritesNearWater(sn, east));                                                                      // (the stand-in Link is not drawn: no reflection to make)
+        water(12, 12, 0); l[0] = 0xFF;
     }
     {   // a bomb that goes off on the screen east flashes gray there while its timer says the game's grayscale bit is on, and not otherwise
         set.pool[0].adopt(*nes, east); Nes& sn = set.pool[0].nes(); for (int sl = 1; sl <= 0x13; sl++) { sn.ram[kObjType + sl] = 0; sn.ram[kObjState + sl] = 0; }
