@@ -13,6 +13,8 @@
 #include <memory>
 #include <string>
 #include <vector>
+#include <cstring>
+#include <algorithm>
 
 class ShadowGame {
 public:
@@ -44,6 +46,7 @@ public:
     void followRealLink(const Nes& real);          // its stand-in Link stops strolling and stands where the real Link does (the hand-off)
     Nes& nes() { return *game; }
     const Nes& nes() const { return *game; }
+    void aimLink(int x, int y) { aimOn = true; aimX = (uint8_t)x; aimY = (uint8_t)y; }   // the next frame the stand-in Link stands here (a returning boomerang flies to him)
     uint8_t tile(int col, int row) const;         // the screen's tile map in this shadow's own game (an armos that woke left floor or stairs here)
     bool retry(const Nes& real, uint32_t seed);   // a failed shadow starts again (at most kMaxAttempts times for one set of shadows)
     int  failedFor() const { return failedFrames; }
@@ -63,6 +66,7 @@ private:
     int target = -1, hopIdx = 0, hopCount = 0, hopFrames = 0, settle = 0, frameCount = 0;
     bool hopIssued = false;
     int dxs = 0, dys = 0, attempts = 0, failedFrames = 0;
+    bool aimOn = false; uint8_t aimX = 0, aimY = 0;
     uint8_t hopDir[2] = {0, 0}, hopRoom[2] = {0, 0};
     uint8_t hearts = 0, heartPart = 0;
     void issueHop();
@@ -77,7 +81,10 @@ private:
 // The shadows around the real game's room (up to 8 neighbours; the screen Link has just left is one of them).
 class ShadowSet {
 public:
+    static constexpr int kSpinStepsMax = 16, kSpinBudget = 24, kStartsPerUpdate = 3;   // shadows still spinning up run up to kSpinStepsMax frames per real frame (kSpinBudget frames per thread shared by all of them); at most kStartsPerUpdate new shadows are made per real frame
+    static int spinSteps(int spinners, int threads) { return threads <= 1 || spinners <= 0 ? kSpinStepsPerFrame : std::clamp(kSpinBudget * threads / spinners, (int)kSpinStepsPerFrame, kSpinStepsMax); }
     static constexpr int kSpinStepsPerFrame = 3;  // a shadow that is still spinning up runs this many frames per real frame (it appears sooner)
+    static constexpr int kRelayBand = 14;          // px from a screen's edge where a returning boomerang is handed to the next screen
     static constexpr int kKeepRadius = 2;          // shadows up to this many screens from Link go on (the 8 around him are started, the others only kept)
     static constexpr int kDropDelay = 2;           // updates the shadows stay after Link is inside a dungeon (the last pictures of the walk in)
     static constexpr int kBridgeHold = 4;         // updates the entered screen's shadow stays after the hand-off; it is drawn for the first pictures of play too (they are a frame or more behind the game and have no monsters yet)
@@ -105,7 +112,12 @@ public:
     bool handOff(Nes& real) { return tryHandOff(real) == ShadowGame::HandOff::Done; }
     bool dump(const char* path) const;            // shadow_debug.txt: per shadow its state and the monsters/items in its object slots
     std::string summary() const;                  // one line for --trace
-    ShadowGame pool[26];                                              // (the 24 screens within two of Link + a spare for the capture of the screen he leaves)
+    static constexpr int kPool = 48;              // the screens on a fully zoomed-out canvas (7 x 5 = 35) and the ones kept two screens from Link, with a spare for the capture of the screen he leaves
+    ShadowGame pool[kPool];
+    int captures = 0, captureFailures = 0; const char* lastCaptureFailure = nullptr;   // (debugging: shadow_debug.txt)
+    int forceSpinSteps = 0;                       // (tests) a fixed number of frames per real frame for spinning shadows, whatever the thread count
+    uint8_t wanted[128] = {};                     // the screens on the canvas (set by the compositor every picture): they get a shadow, whatever the zoom
+    void setWanted(const uint8_t* mask) { std::memcpy(wanted, mask, sizeof wanted); }
     std::vector<ShadowGame*> active;
     int base = -1;
     bool handOffArmed = false, departed = false, wasOverworldPlay = false;
@@ -115,6 +127,8 @@ public:
     ShadowGame* bridge = nullptr;
 private:
     void reconcile(Nes& real);
+    void topUp(Nes& real);
+    void relayBoomerangs(Nes& real);
     ShadowGame* capture(const Nes& real, int room);
     void dropBridge();
     void retire(int room);

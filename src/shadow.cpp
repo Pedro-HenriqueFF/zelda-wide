@@ -125,6 +125,9 @@ void ShadowGame::wanderLink() {
     auto safe = [&](float x, float y) {
         for (int s = 1; s <= 0x13; s++)
             if (r[kObjType + s] == kTypeItem && std::fabs(x - r[kObjX + s]) < kItemClear && std::fabs(y + 3 - r[kObjY + s]) < kItemClear) return false;
+        // The room item (a heart container, a triforce piece) has no object type: the game draws it and lets Link take it all the same (the stand-in took the overworld's heart container
+        // as he strolled over the lake: its room flag was set in the shadow and it stayed gone until Link walked into the screen himself).
+        if (!(r[kObjState + kSlotRoomItem] & 0x80) && r[kRoomItemId] != kRoomItemNone && std::fabs(x - r[kObjX + kSlotRoomItem]) < kItemClear && std::fabs(y + 3 - r[kObjY + kSlotRoomItem]) < kItemClear) return false;
         return true;
     };
     auto newGoal = [&]() { wx = (float)(kWanderX0 + rnd() % (kWanderX1 - kWanderX0)); wy = (float)(kWanderY0 + rnd() % (kWanderY1 - kWanderY0)); };
@@ -141,6 +144,7 @@ void ShadowGame::wanderLink() {
     if (r[kObjX] == kDockX || r[kObjX] == kDockXRoom55) r[kObjX]++;                            // (a Link standing exactly there starts the raft ride: UpdateDock, Z_04.asm 3862-3900)
     r[kObjState] = 0;
     r[kChaseOtherTarget] = 0; r[kChaseLongTimer] = kChaseKeep;                                // (the monsters always chase him, never the mirrored point: the game flips the target when this timer runs out)
+    if (aimOn) { r[kObjX] = aimX; r[kObjY] = aimY; aimOn = false; }                          // (a boomerang on its way back to the real Link: the one it steers to stands where it must go)
 }
 
 // The raft (UpdateDock, Z_04.asm 3863-3955) and the Great Fairy's hearts (UpdatePondFairy, Z_04.asm 3374-3400) are set off by where the PLAYER stands (X exactly the dock's and Y $3D / $7D;
@@ -225,7 +229,7 @@ void ShadowSet::reconcile(Nes& real) {
     for (ShadowGame* g : active) {
         const int dx = (g->room() & 15) - (room & 15), dy = (g->room() >> 4) - (room >> 4);
         if (g == bridge) { keep.push_back(g); continue; }             // (the screen Link has entered: its monsters are the real game's now; the shadow only bridges the picture, and goes on until it is dropped)
-        if (g->room() != room && std::abs(dx) <= kKeepRadius && std::abs(dy) <= kKeepRadius && g->state() != ShadowGame::State::Failed) keep.push_back(g);   // (two screens away: only kept, never started: walking in and out quickly must not make them start afresh)
+        if (g->room() != room && ((std::abs(dx) <= kKeepRadius && std::abs(dy) <= kKeepRadius) || wanted[g->room()]) && g->state() != ShadowGame::State::Failed) keep.push_back(g);   // (two screens away: only kept, never started: walking in and out quickly must not make them start afresh)
         else g->reset();
     }
     active = keep; base = room;
@@ -240,12 +244,79 @@ void ShadowSet::reconcile(Nes& real) {
     }
 }
 
+// Every screen on the canvas (the compositor says which: more of them the further out the camera is) gets a shadow. The eight around Link are made from the real game (reconcile);
+// a screen further out is made from a neighbouring shadow that is already up, one hop away (two for a diagonal), a few per frame, the nearest first.
+void ShadowSet::topUp(Nes& real) {
+    const int room = real.ram[kRoomId];
+    if (room < 0 || room > 0x7F) return;
+    std::vector<std::pair<int, int>> todo;
+    for (int r = 0; r < 128; r++) {
+        if (!wanted[r] || r == room) continue;
+        bool have = false; for (const ShadowGame* g : active) have = have || g->room() == r;
+        if (have) continue;
+        const int dc = std::abs((r & 15) - (room & 15)), dr = std::abs((r >> 4) - (room >> 4));
+        todo.push_back({std::max(dc, dr) * 8 + dc + dr, r});
+    }
+    std::sort(todo.begin(), todo.end());
+    int started = 0;
+    for (const auto& t : todo) {
+        if (started >= kStartsPerUpdate) break;
+        const int r = t.second;
+        ShadowGame* src = nullptr; int best = 1 << 20;
+        for (ShadowGame* g : active) {                                // (an up shadow beside it: orthogonal = one hop is best, then the one nearest Link)
+            const int dx = (r & 15) - (g->room() & 15), dy = (r >> 4) - (g->room() >> 4);
+            if (!g->visible() || g->room() == r || std::abs(dx) > 1 || std::abs(dy) > 1) continue;
+            const int cost = (dx && dy ? 100 : 0) + std::abs((g->room() & 15) - (room & 15)) + std::abs((g->room() >> 4) - (room >> 4));
+            if (cost < best) { best = cost; src = g; }
+        }
+        ShadowGame* g = alloc();
+        if (!g) break;
+        const int sdx = src ? (r & 15) - (src->room() & 15) : (r & 15) - (room & 15), sdy = src ? (r >> 4) - (src->room() >> 4) : (r >> 4) - (room >> 4);
+        if (!src && (std::abs(sdx) > 1 || std::abs(sdy) > 1)) continue;   // (nothing up beside it yet: a later frame)
+        const Nes& from = src ? src->nes() : real;
+        if (g->start(from, sdx, sdy, (uint32_t)(real.cpu.totalCycles >> 4) + (uint32_t)r * 104729u)) { active.push_back(g); started++; }
+    }
+}
+
+// A boomerang Link threw and left behind keeps flying in its screen's shadow; when it turns back it flies to the real Link, however many screens away: it steers to the edge of its
+// screen that faces his, and there it is handed to the next screen (the shadow beside it, or the real game itself), until the real game's own boomerang code brings it to Link.
+void ShadowSet::relayBoomerangs(Nes& real) {
+    if (real.ram[kGameMode] != kModePlay || real.ram[kCurLevel] != 0) return;
+    static const uint16_t kCopy[] = {kObjX, kObjY, kObjDir, kObjState, kObjTimer, kObjGridOffset, kObjMovingLimit, kObjPosFrac, kObjQSpeedFrac, kObjAnimCounter, kObjAnimFrame, kObjType};
+    const int realRoom = real.ram[kRoomId];
+    for (ShadowGame* g : active) {
+        if (!g->visible()) continue;
+        uint8_t* r = g->nes().ram;
+        const int st = r[kObjState + kSlotBoomerang] & 0xF0;
+        if (r[kObjType + kSlotBoomerang] != kTypeBoomerang || (st != 0x40 && st != 0x50)) continue;       // (flying back to the thrower: states $40, $50)
+        const int dc = (realRoom & 15) - (g->room() & 15), dr = (realRoom >> 4) - (g->room() >> 4);
+        if (!dc && !dr) continue;
+        const bool horiz = std::abs(dc) >= std::abs(dr);
+        const int sx = horiz ? (dc > 0 ? 1 : -1) : 0, sy = horiz ? 0 : (dr > 0 ? 1 : -1);
+        const int bx = r[kObjX + kSlotBoomerang], by = r[kObjY + kSlotBoomerang];
+        g->aimLink(horiz ? (sx > 0 ? kEdgeRight : kEdgeLeft) : bx, horiz ? by : (sy > 0 ? kEdgeDown : kEdgeUp));
+        const bool atEdge = horiz ? (sx > 0 ? bx >= kEdgeRight - kRelayBand : bx <= kEdgeLeft + kRelayBand) : (sy > 0 ? by >= kEdgeDown - kRelayBand : by <= kEdgeUp + kRelayBand);
+        if (!atEdge) continue;
+        const int next = ShadowGame::targetRoom(g->room(), sx, sy);
+        uint8_t* d = nullptr;
+        if (next == realRoom) d = real.ram;
+        else for (ShadowGame* o : active) if (o->room() == next && o->visible()) { d = o->nes().ram; break; }
+        if (!d || d[kObjState + kSlotBoomerang] != 0) continue;                                         // (nobody to take it, or its slot is busy: it is caught at the edge)
+        for (uint16_t a : kCopy) d[a + kSlotBoomerang] = r[a + kSlotBoomerang];
+        if (horiz) d[kObjX + kSlotBoomerang] = (uint8_t)(sx > 0 ? kEdgeLeft + kRelayBand : kEdgeRight - kRelayBand);
+        else d[kObjY + kSlotBoomerang] = (uint8_t)(sy > 0 ? kEdgeUp + kRelayBand : kEdgeDown - kRelayBand);
+        r[kObjState + kSlotBoomerang] = 0; r[kObjType + kSlotBoomerang] = 0;
+    }
+}
+
 void ShadowSet::stepAll() {
     const int n = (int)active.size();
+    int spinners = 0; for (const ShadowGame* g : active) spinners += g->state() == ShadowGame::State::SpinUp;
+    const int steps = forceSpinSteps > 0 ? forceSpinSteps : spinSteps(spinners, par::maxThreads());           // (the more cores, the faster the unseen walk to the screens goes)
     par::forRange(0, n, 1, [&](int a, int b) {
         for (int i = a; i < b; i++) {
             ShadowGame& g = *active[i];
-            for (int s = 0; s < kSpinStepsPerFrame; s++) {               // (only the walk to the screen, which nobody sees, is hurried: the arrival and everything after runs at the game's speed)
+            for (int s = 0; s < steps; s++) {               // (only the walk to the screen, which nobody sees, is hurried: the arrival and everything after runs at the game's speed)
                 const bool spinning = g.state() == ShadowGame::State::SpinUp;
                 g.stepFrame();
                 if (!spinning || g.state() != ShadowGame::State::SpinUp) break;
@@ -286,23 +357,31 @@ void ShadowSet::update(Nes& real) {
     wasOverworldPlay = mode == kModePlay && level == 0;
     if (plain && (int)real.ram[kRoomId] != base) reconcile(real);
     if (mode == kModeLeaveCave && level == 0 && !bridge) for (ShadowGame* g : active) if (g->visible() && g->room() == (int)real.ram[kRoomId]) { bridge = g; bridgeHold = 0; }   // (the overworld comes back without its monsters: the screen's shadow stands in for them)
+    if (plain) { topUp(real); relayBoomerangs(real); }
     if (plain && bridge && bridgeHold == 0) bridgeHold = kBridgeHold;
     if (real.ram[kMenuState] != 0 || real.ram[kPaused] != 0) return;  // the inventory / pause: the game stands still, so do the shadows
     stepAll();
-    if (level == 0 && (mode == kModeEnter || mode == kModePlay)) carryTiles(real);
+    if (level == 0 && (mode == kModeEnter || mode == kModePlay || mode == kModeLeaveCave)) carryTiles(real);   // (mode $A: the overworld is laid out again behind the fade)
     if (handOffArmed && mode == kModePlay) {                          // Link has walked into the screen and the game plays again: the shadow's creatures take over where the shadow is NOW
         const ShadowGame::HandOff r = tryHandOff(real);               // (not earlier: the game does not move its monsters while Link walks in, the shadow does)
         handOffArmed = false; if (r != ShadowGame::HandOff::Done) retire(real.ram[kRoomId]);
     }
     if (plain)
         for (ShadowGame* g : active)                                   // (a failed shadow gets another go after a pause, a few times)
-            if (g->state() == ShadowGame::State::Failed && g->failedFor() >= ShadowGame::kRetryDelay) g->retry(real, (uint32_t)(real.cpu.totalCycles >> 3) + (uint32_t)g->room() * 31u);
+            if (g->state() == ShadowGame::State::Failed && g->failedFor() >= ShadowGame::kRetryDelay) {
+                const int dc = std::abs((g->room() & 15) - (real.ram[kRoomId] & 15)), dr = std::abs((g->room() >> 4) - (real.ram[kRoomId] >> 4));
+                if (dc > 1 || dr > 1) g->reset();                       // (two screens out: it was made from another shadow; topUp makes it afresh)
+                else g->retry(real, (uint32_t)(real.cpu.totalCycles >> 3) + (uint32_t)g->room() * 31u);
+            }
+    active.erase(std::remove_if(active.begin(), active.end(), [](ShadowGame* o) { return o->state() == ShadowGame::State::Idle; }), active.end());
 }
 
 // The screen being left (`room`) goes on as a shadow; there is never more than one shadow of a screen.
 ShadowGame* ShadowSet::capture(const Nes& real, int room) {
     ShadowGame* g = alloc();
-    if (!g || !g->captureFrom(real, room, (uint32_t)(real.cpu.totalCycles >> 5) + (uint32_t)room * 131u)) return nullptr;
+    if (!g) { captureFailures++; lastCaptureFailure = "no free shadow"; return nullptr; }
+    if (!g->captureFrom(real, room, (uint32_t)(real.cpu.totalCycles >> 5) + (uint32_t)room * 131u)) { captureFailures++; lastCaptureFailure = real.cpu.inNmi() ? "the game was inside its NMI handler" : "maze screen or bad room"; return nullptr; }
+    captures++;
     for (ShadowGame* o : active) if (o != g && o->room() == g->room()) o->reset();
     active.erase(std::remove_if(active.begin(), active.end(), [](ShadowGame* o) { return o->state() == ShadowGame::State::Idle; }), active.end());
     if (bridge && bridge->state() == ShadowGame::State::Idle) { bridge = nullptr; bridgeHold = 0; }   // (the old bridging shadow of this screen was just replaced)
@@ -367,6 +446,7 @@ bool ShadowSet::dump(const char* path) const {
     FILE* f = std::fopen(path, "w");
     if (!f) return false;
     std::fprintf(f, "%s\n", summary().c_str());
+    std::fprintf(f, "\ncaptures of the screen Link leaves: %d made, %d failed (last failure: %s); pool in use: %d of %d\n", captures, captureFailures, lastCaptureFailure ? lastCaptureFailure : "none", (int)active.size(), kPool);
     for (const ShadowGame* g : active) {
         const Nes& n = g->nes();
         std::fprintf(f, "\nshadow of screen %02X: state %d, %d frames, game mode %02X sub %02X, room %02X\n", g->room(), (int)g->state(), g->frames(), n.ram[kGameMode], n.ram[kGameSubmode], n.ram[kRoomId]);

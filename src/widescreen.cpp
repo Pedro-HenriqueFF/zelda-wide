@@ -392,6 +392,12 @@ void Widescreen::renderCore(Nes& nes, double windowAspect, Canvas& out) {
     const int camX = cx - W / 2;                         // world x at canvas column 0
     const int camY = cy - vh / 2;                        // world y at canvas row topBand
     const int roomX = (view.room & 15) * ROOM_W - camX, roomY = topBand + (view.room >> 4) * ROOM_H - camY;   // the game's own room on the canvas
+    if (shadows && layout == Layout::World) {                            // the screens on the canvas get a shadow (N): more of them the more zoomed out
+        uint8_t want[128] = {};
+        const int c0 = std::max(0, camX / ROOM_W - (camX < 0 ? 1 : 0)), c1 = std::min(15, (camX + W - 1) / ROOM_W), r0 = std::max(0, camY / ROOM_H - (camY < 0 ? 1 : 0)), r1 = std::min(7, (camY + (out.h - topBand) - 1) / ROOM_H);
+        for (int r = r0; r <= r1; r++) for (int c = c0; c <= c1; c++) if (!fog || discovered(view.slot, r * 16 + c)) want[r * 16 + c] = 1;   // (a screen under the fog shows nothing living: not made)
+        shadows->setWanted(want);
+    }
 
     // The bomb "flash": the game turns its grayscale bit on and off for a few frames. Instead of tinting the whole picture
     // (status bar included) it becomes a circle of gray around the bomb, which also reaches the neighbouring screens.
@@ -402,6 +408,19 @@ void Widescreen::renderCore(Nes& nes, double windowAspect, Canvas& out) {
         for (int bomb : {kSlotBombA, kSlotBombB})
             if (nes.ram[kObjState + bomb] == kStateBombFlash) { flash.cx = ox + nes.ram[kObjX + bomb] + 8; flash.cy = oy + nes.ram[kObjY + bomb] - HUD_H + 8; break; }
     }
+    // A bomb that goes off on a screen next to Link's flashes there too: the shadow's bomb is in its flash state and the game's grayscale bit (cleared at timer $12 and $0D, set at
+    // $16 and $11, UpdateBombFlashEffect, Z_01.asm 4086) is on while the timer is in $13-$16 and $0E-$11.
+    if (!flash.on && shadows && shadows->enabled && layout == Layout::World)
+        for (const ShadowGame* g : shadows->games()) {
+            if (!g->visible() || g->room() == view.room || (fog && !discovered(slot, g->room()))) continue;
+            const uint8_t* r = g->nes().ram;
+            for (int bomb : {kSlotBombA, kSlotBombB}) {
+                const int tm = r[kObjTimer + bomb];
+                if (r[kObjState + bomb] != kStateBombFlash || !((tm >= 0x13 && tm <= 0x16) || (tm >= 0x0E && tm <= 0x11))) continue;
+                flash.on = true; flash.cx = (g->room() & 15) * ROOM_W + r[kObjX + bomb] + 8; flash.cy = (g->room() >> 4) * ROOM_H + r[kObjY + bomb] - HUD_H + 8;
+            }
+            if (flash.on) break;
+        }
     // The picture that stays behind a cave's box: the last bright, steady overworld frame, *without* anything that moves
     // (Link, enemies, their projectiles, effects). So it is the scenery as drawn by drawWorld plus the game's room with only
     // its background layer; no flash frames (they would leave a gray circle in it).

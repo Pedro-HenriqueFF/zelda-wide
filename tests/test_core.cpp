@@ -431,6 +431,15 @@ static void testClone() {
         CHECK_EQ(a->cpu.pc, b->cpu.pc); CHECK_EQ(a->cpu.totalCycles, b->cpu.totalCycles); CHECK_EQ(a->cpu.totalCycles, c->cpu.totalCycles);
         CHECK(b->ppu.framebuffer[24 * 256] != 0u);                                        // (the full one drew)
     }
+    {   // frames skipped without drawing (the scroll between two screens, main.cpp) leave the game and the next drawn picture exactly as drawing them would
+        auto a = std::make_unique<Nes>(), b = std::make_unique<Nes>();
+        a->cloneFrom(*src, false); b->cloneFrom(*src, false);
+        for (int f = 0; f < 40; f++) a->runFrame();
+        b->ppu.lite = true; for (int f = 0; f < 39; f++) b->runFrame(); b->ppu.lite = false; b->runFrame();
+        CHECK(std::memcmp(a->ram, b->ram, sizeof a->ram) == 0); CHECK_EQ(a->cpu.pc, b->cpu.pc); CHECK_EQ(a->cpu.totalCycles, b->cpu.totalCycles);
+        CHECK(std::memcmp(a->ppu.framebuffer, b->ppu.framebuffer, 256 * 240 * sizeof(uint32_t)) == 0);
+        CHECK(b->ppu.framebuffer[24 * 256] != 0u);                                           // (and the last one was drawn)
+    }
     {   // a lite shadow booted from scratch gets through the game's wait for the sprite-0 hit
         auto c = std::make_unique<Nes>(); boot(*c, makeRenderRom(0));
         auto l = std::make_unique<Nes>(); l->cloneFrom(*c, true);
@@ -715,6 +724,16 @@ static void testShadow() {
         dd.update(*dq); CHECK(dd.active.empty()); CHECK_EQ(dd.baseRoom(), -1);                              // ... then all gone
         dq->ram[0x12] = 5; dd.update(*dq); CHECK(dd.active.empty());
     }
+    {   // the room item (the overworld's heart container of room $5F: slot $13, no object type) is kept clear of too: the stand-in must not take it as he strolls over the lake
+        auto r = realGame(0x35); ShadowSet set; set.enabled = true;
+        for (int i = 0; i < 330; i++) set.update(*r);
+        Nes& sh = set.active[0]->nes();
+        sh.ram[0xAC + 0x13] = 0; sh.ram[0xAB] = 0x1A; sh.ram[0x70 + 0x13] = 0x78; sh.ram[0x84 + 0x13] = 0x8D - 3;   // the heart container right where he starts (type stays 0)
+        bool clear = true;
+        for (int i = 0; i < 900; i++) { set.update(*r); clear = clear && (std::abs(sh.ram[0x70] - sh.ram[0x70 + 0x13]) >= 9 || std::abs(sh.ram[0x84] + 3 - sh.ram[0x84 + 0x13]) >= 9); }
+        CHECK(clear);
+        sh.ram[0xAB] = 0x3F; sh.ram[0xAC + 0x13] = 0xFF;                                                          // (no item, or one that is not active: nothing to keep clear of)
+    }
     {   // the stand-in Link strolls about (monsters steer towards the player: a Link who never moves gathers them all around him) but never takes an item
         auto r = realGame(0x35); ShadowSet set; set.enabled = true;
         for (int i = 0; i < 330; i++) set.update(*r);
@@ -803,6 +822,11 @@ static void testShadow() {
         CHECK(q->ram[0x307] == 0x21 && q->ram[0x308] == 0xC5 && q->ram[0x309] == 0x82 && q->ram[0x30A] == 0x72 && q->ram[0x30B] == 0x73);
         CHECK_EQ((int)q->ram[0x302 + 20], 0xFF);                                                                  // (the end marker follows the last record; the next square overwrites it, as in the game)
         ps.update(*q); CHECK_EQ((int)q->ram[0x301], 20);                                                          // done once: no statue left there, nothing queued again
+        // coming out of a cave or stairs (mode $A, the fade): the statues are already gone behind the fade, before the first picture
+        auto q4 = realGame(0x35); ShadowSet p4; p4.enabled = true; for (int i = 0; i < 330; i++) p4.update(*q4);
+        ShadowGame* s4 = find(p4, 0x36); CHECK(s4 != nullptr);
+        if (s4) { put(s4->nes(), 6, 4, 0x70, 0x71, 0x72, 0x73); put(*q4, 6, 4, 0xC0, 0xC1, 0xC2, 0xC3); q4->ram[0x301] = 0; q4->ram[0xEB] = 0x36; q4->ram[0x12] = 0x0A; p4.update(*q4);
+                 CHECK_EQ(get(*q4, 6, 4), 0x70); CHECK_EQ((int)q4->ram[0x301], 10); }
         // a screen with no shadow of its own is left as the game laid it out
         auto q2 = realGame(0x35); ShadowSet p2; p2.enabled = true; put(*q2, 4, 6, 0xC0, 0xC1, 0xC2, 0xC3); q2->ram[0x301] = 0; q2->ram[0x12] = 5; p2.update(*q2);
         CHECK_EQ(get(*q2, 4, 6), 0xC0); CHECK_EQ((int)q2->ram[0x301], 0);
@@ -873,12 +897,52 @@ static void testShadow() {
         }
         CHECK(settleSteps > 100); CHECK(slow); CHECK(spinFast > 50);
     }
+    {   // spin-up speed: more cores and fewer spinning shadows run more frames per real frame (never fewer than 3, never more than 16); one thread keeps 3
+        CHECK_EQ(ShadowSet::spinSteps(8, 1), 3); CHECK_EQ(ShadowSet::spinSteps(0, 8), 3); CHECK_EQ(ShadowSet::spinSteps(8, 8), 16); CHECK_EQ(ShadowSet::spinSteps(8, 4), 12);
+        CHECK_EQ(ShadowSet::spinSteps(35, 8), 5); CHECK_EQ(ShadowSet::spinSteps(60, 2), 3); CHECK(ShadowSet::spinSteps(1, 8) == ShadowSet::kSpinStepsMax);
+    }
+    {   // every screen the canvas shows gets a shadow (7 x 5 at the widest zoom), the far ones made from a shadow beside them; screens that are no longer wanted go once they are 3 away
+        auto q = realGame(0x35); ShadowSet ps; ps.enabled = true;
+        uint8_t want[128] = {}; int wantedN = 0;
+        for (int row = 1; row <= 5; row++) for (int col = 2; col <= 8; col++) { want[row * 16 + col] = 1; wantedN++; }
+        ps.setWanted(want);
+        for (int i = 0; i < 1500; i++) ps.update(*q);
+        int up = 0; for (int row = 1; row <= 5; row++) for (int col = 2; col <= 8; col++) { const int r = row * 16 + col; if (r == 0x35) continue; bool v = false; for (ShadowGame* g : ps.active) v = v || (g->room() == r && g->visible()); up += v; }
+        CHECK_EQ(up, wantedN - 1);                                                                          // (all of them but Link's own screen)
+        CHECK_EQ(ps.active.size(), (size_t)(wantedN - 1));
+        uint8_t none[128] = {}; ps.setWanted(none); q->ram[0xEB] = 0x36; ps.update(*q);                       // one screen east, nothing wanted any more: only the ones within two stay
+        for (ShadowGame* g : ps.active) CHECK(std::abs((g->room() & 15) - 6) <= 2 && std::abs((g->room() >> 4) - 3) <= 2);
+    }
+    {   // a boomerang Link left behind that turns back flies to the REAL Link, screen by screen: it steers to the edge facing him and is handed over there
+        auto find = [&](ShadowSet& st, int room) -> ShadowGame* { for (ShadowGame* g : st.active) if (g->room() == room) return g; return nullptr; };
+        auto q = realGame(0x35); ShadowSet ps; ps.enabled = true;
+        uint8_t w[128] = {}; w[0x37] = 1; ps.setWanted(w);                                                  // (0x37, two screens east, is on the canvas)
+        for (int i = 0; i < 900; i++) ps.update(*q);
+        ShadowGame* e = find(ps, 0x36); ShadowGame* ee = e; CHECK(e && e->ready());
+        uint8_t* er = e->nes().ram; const int B = 0x0F;
+        auto boom = [&](uint8_t* r, int x, int y, int state) { r[0x34F + B] = 0x5C; r[0x70 + B] = (uint8_t)x; r[0x84 + B] = (uint8_t)y; r[0xAC + B] = (uint8_t)state; r[0x98 + B] = 2; r[0x28 + B] = 7; };
+        boom(er, 100, 120, 0x50); ps.update(*q);                                                          // returning, still mid-screen: the stand-in Link is where it must go (the west edge)
+        CHECK_EQ((int)er[0x70], 0); CHECK_EQ((int)er[0x84], 120); CHECK_EQ((int)q->ram[0x34F + B], 0);
+        er[0x70 + B] = 0x0A; q->ram[0x12] = 5; ps.update(*q);                                              // at the west edge: into the real game, entering at its east edge
+        CHECK_EQ((int)q->ram[0x34F + B], 0x5C); CHECK_EQ((int)q->ram[0x70 + B], 0xE2); CHECK_EQ((int)q->ram[0x84 + B], 120); CHECK_EQ((int)q->ram[0xAC + B], 0x50); CHECK_EQ((int)q->ram[0x28 + B], 7);
+        CHECK_EQ((int)er[0x34F + B], 0); CHECK_EQ((int)er[0xAC + B], 0);                                   // (gone from the shadow)
+        q->ram[0x34F + B] = 0; q->ram[0xAC + B] = 0;
+        boom(er, 8, 90, 0x40); q->ram[0xAC + B] = 0x10; q->ram[0x34F + B] = 0x5C; ps.update(*q);           // the real boomerang slot is busy: it waits at the edge
+        CHECK_EQ((int)er[0x34F + B], 0x5C); CHECK_EQ((int)q->ram[0xAC + B], 0x10);                          // (the real game's own boomerang is untouched)
+        q->ram[0xAC + B] = 0; q->ram[0x34F + B] = 0; er[0x34F + B] = 0; er[0xAC + B] = 0;
+        ShadowGame* e2 = find(ps, 0x37); CHECK(e2 && e2->ready()); if (!e2) return;                                         // two screens east: shadow to shadow
+        boom(e2->nes().ram, 5, 100, 0x40); ps.update(*q);
+        CHECK_EQ((int)er[0x34F + B], 0x5C); CHECK_EQ((int)er[0x70 + B], 0xE2); CHECK_EQ((int)e2->nes().ram[0x34F + B], 0);
+        er[0x34F + B] = 0; er[0xAC + B] = 0;
+        boom(er, 100, 120, 0x20); ps.update(*q); CHECK_EQ((int)er[0x70 + B], 100); CHECK_EQ((int)er[0x34F + B], 0x5C);   // (still flying away: left alone)
+        (void)ee;
+    }
     {   // a corner screen has only the neighbours it has
         auto r = realGame(0x00); ShadowSet set; set.enabled = true; set.update(*r);
         CHECK_EQ(set.active.size(), (size_t)3);
     }
     {   // the pool gives the same result as one thread
-        auto r = realGame(0x35); ShadowSet a, b; a.enabled = b.enabled = true;
+        auto r = realGame(0x35); ShadowSet a, b; a.enabled = b.enabled = true; a.forceSpinSteps = b.forceSpinSteps = 3;
         const int saved = par::maxThreads();
         for (int i = 0; i < 60; i++) { par::maxThreads() = 1; a.update(*r); par::maxThreads() = 4; b.update(*r); }
         par::maxThreads() = saved;

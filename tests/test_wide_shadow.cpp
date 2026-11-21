@@ -22,7 +22,7 @@ void section32(Ctx& t) {
         for (int r = 0; r < 32; r++) n.ppu.vramWrite((uint16_t)(0x200 + r), (r & 8) ? 0x00 : 0xFF);     // (low plane solid, high plane empty: colour 1; top half then bottom half)
         uint8_t* o = &n.ppu.oam[oamIdx * 4]; o[0] = (uint8_t)y; o[1] = 0x20; o[2] = 0; o[3] = (uint8_t)x;
     };
-    auto picture = [&](const ShadowSet* s) { m.shadows = s; frames(m, 1, aspect); return t.c.pixels; };
+    auto picture = [&](ShadowSet* s) { m.shadows = s; frames(m, 1, aspect); return t.c.pixels; };
     auto differing = [&](const std::vector<uint32_t>& a, const std::vector<uint32_t>& b) { size_t n = 0; for (size_t i = 0; i < a.size() && i < b.size(); i++) n += a[i] != b[i]; return n; };
     set.pool[0].adopt(*nes, east); set.active = {&set.pool[0]};
     monster(set.pool[0], 5, 100, 100);
@@ -203,6 +203,16 @@ void section32(Ctx& t) {
         CHECK(k); CHECK(!t);
         setState(5, room); frames(m, 2, aspect); m.sparkles.clear();
     }
+    {   // the screens on the canvas are the ones that get a shadow: more of them the more the camera is zoomed out; screens under the fog are not asked for
+        auto wanted = [&](const ShadowSet& st) { int n = 0; for (int r = 0; r < 128; r++) n += st.wanted[r]; return n; };
+        const int saveH = m.viewHeight; const bool saveFog = m.fog; m.fog = false; m.shadows = &set; set.enabled = true;
+        m.viewHeight = 176; frames(m, 2, aspect); const int near = wanted(set);
+        m.viewHeight = 704; frames(m, 2, aspect); const int far = wanted(set);
+        CHECK(near >= 1 && near <= 6); CHECK(far >= 15); CHECK(far > near * 2);
+        CHECK(set.wanted[room]);                                                                              // (Link's own screen is on the canvas)
+        m.fog = true; frames(m, 2, aspect); CHECK(wanted(set) < far);                                         // the fog hides the undiscovered ones
+        m.fog = saveFog; m.viewHeight = saveH; m.shadows = nullptr; frames(m, 2, aspect);
+    }
     {   // what Link had out when he left a screen still lights it in its shadow: fire, a bomb's flash, the sword's shot, trails of the boomerang and arrows; an armos glows
         m.fog = false; m.lighting = true; set.enabled = true;
         set.pool[0].adopt(*nes, east); Nes& sn = set.pool[0].nes(); for (int sl = 1; sl <= 0x13; sl++) { sn.ram[kObjType + sl] = 0; sn.ram[kObjState + sl] = 0; }
@@ -229,6 +239,17 @@ void section32(Ctx& t) {
         CHECK_EQ(count(true), (size_t)1);
         if (!m.lightSources.empty()) CHECK(m.lightSources[0].b > m.lightSources[0].r);
         sn.ram[kObjType + 4] = 0; set.active.clear(); m.shadows = nullptr; m.lightSources.clear(); m.sparkles.clear();
+    }
+    {   // a bomb that goes off on the screen east flashes gray there while its timer says the game's grayscale bit is on, and not otherwise
+        set.pool[0].adopt(*nes, east); Nes& sn = set.pool[0].nes(); for (int sl = 1; sl <= 0x13; sl++) { sn.ram[kObjType + sl] = 0; sn.ram[kObjState + sl] = 0; }
+        set.active = {&set.pool[0]}; set.enabled = true; const bool saveFog = m.fog, saveLight = m.lighting; m.fog = false; m.lighting = false;
+        sn.ram[kObjX + kSlotBombA] = 20; sn.ram[kObjY + kSlotBombA] = 120; sn.ram[kObjState + kSlotBombA] = kStateBombFlash;
+        sn.ram[kObjTimer + kSlotBombA] = 0x30; auto off = picture(&set);
+        sn.ram[kObjTimer + kSlotBombA] = 0x15; auto on = picture(&set);
+        sn.ram[kObjTimer + kSlotBombA] = 0x12; auto off2 = picture(&set);
+        sn.ram[kObjTimer + kSlotBombA] = 0x0F; auto on2 = picture(&set);
+        CHECK(on != off); CHECK(off2 == off); CHECK(on2 != off);
+        sn.ram[kObjState + kSlotBombA] = 0; set.active.clear(); m.shadows = nullptr; m.fog = saveFog; m.lighting = saveLight;
     }
     {   // an armos that woke on the screen east (its shadow's tile map has stairs / floor there) is gone from the screen's statues here too; without the shadow the decode shows the statue
         m.shadows = nullptr; m.roomTilesFor(*nes, east);

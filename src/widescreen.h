@@ -163,7 +163,7 @@ public:
     bool trace = false;         // --trace: log every change of game mode / layout (for debugging flicker)
     bool caveBox = true;        // F9: caves and shops appear in a box over the overworld instead of replacing the picture
     void markExplored(int slot, int room) { markDiscovered(slot, room); }   // (fog: the screen counts as explored)
-    const class ShadowSet* shadows = nullptr;   // N: the shadow games of the neighbouring screens, drawn into the margins (set by main.cpp)
+    class ShadowSet* shadows = nullptr;   // N: the shadow games of the neighbouring screens, drawn into the margins (set by main.cpp)
     bool lighting = true;       // F1: day/night cycle (T = skip a quarter of the day) and dynamic lights
     int currentScreen() const { return fxRoom; }   // the overworld screen (row * 16 + column) of the last frame, -1 before the first
     bool waterReflections = true;   // END: reflections of the shore, walls, Link, monsters and shots in the water

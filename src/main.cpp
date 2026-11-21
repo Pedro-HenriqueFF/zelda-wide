@@ -261,10 +261,12 @@ int main(int argc, char** argv) {
                     const int openState = nes.ram[zelda::kCurLevel] == 0 ? 8 : 7;
                     int guard = 0;
                     bool skipped = false;
+                    nes.ppu.lite = true;       // (the frames nobody sees are not drawn: the game runs the same, much faster)
                     while (nes.ram[zelda::kMenuState] != 0 && nes.ram[zelda::kMenuState] != openState && guard++ < 400) {
                         nes.runFrame();
                         skipped = true;
                     }
+                    nes.ppu.lite = false;
                     if (skipped) {
                         nes.runFrame();            // show the first frame of the final picture
                         wide.resetLag();
@@ -272,11 +274,14 @@ int main(int argc, char** argv) {
                 }
                 int guard = 0;
                 bool skipped = false;
+                nes.ppu.lite = true;           // (the scroll nobody sees is not drawn: about 60 frames of game logic without the picture; the last frame below is drawn)
                 while (nes.ram[zelda::kCurLevel] == 0 && nes.ram[zelda::kGameMode] == zelda::kModeScroll && !wide.keepScroll(nes) && guard++ < 600) {
                     nes.runFrame();
                     skipped = true;
                 }
+                nes.ppu.lite = false;
                 if (skipped) {
+                    shadows.carryTiles(nes);   // the statues of armos that woke here are gone before the first picture of the screen (N)
                     nes.runFrame();            // let the game finish its first frame on the new screen
                     wide.resetLag();
                     shadows.armHandOff(nes);  // the monsters of the shadow of this screen take over once the game has made its own (N5)

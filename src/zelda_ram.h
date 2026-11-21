@@ -34,6 +34,8 @@ constexpr int kRandomLen = 13;
 constexpr uint16_t kObjShoveDir = 0xC0, kObjShoveDistance = 0xD3, kObjGridOffset = 0x394, kObjInvincibilityTimer = 0x4F0;   // (Variables.inc 54, 55, 103, 147)
 // Link's coordinates at the screen edge in each direction (PlayerScreenEdgeBounds, Z_07.asm 2831: up $3D, down $DD, left $00, right $F0).
 constexpr uint8_t kEdgeUp = 0x3D, kEdgeDown = 0xDD, kEdgeLeft = 0x00, kEdgeRight = 0xF0, kCenterX = 0x78, kCenterY = 0x8D;
+constexpr uint16_t kObjTimer = 0x28, kObjMovingLimit = 0x380, kObjPosFrac = 0x3A8, kObjQSpeedFrac = 0x3BC, kObjAnimCounter = 0x3D0, kObjAnimFrame = 0x3E4;   // per-slot arrays the boomerang uses (Variables.inc, ObjVars.inc)
+constexpr int kSlotBoomerang = 0x0F; constexpr uint8_t kTypeBoomerang = 0x5C;   // Link's boomerang (and arrow): UpdateArrowOrBoomerang, Z_07.asm 3857
 constexpr uint16_t kObjDir = 0x98;       // facing: 1 right, 2 left, 4 down, 8 up
 constexpr uint8_t kModeSave = 0x0D;     // game mode: save (sub 0..2; sub 2 = done, back to the title)
 // The mazes (verified-facts.md, "Lost Woods / Lost Hills"): the room, and the room Link reaches when he leaves it the right way.
@@ -71,6 +73,7 @@ constexpr int kSlotSword = 0x0D;          // sword / rod
 constexpr int kSlotShot = 0x0E;           // sword shot / magic shot
 constexpr int kSlotBombA = 0x10, kSlotBombB = 0x11;   // bomb / fire (two of them: two bombs can be out)
 constexpr int kSlotLastWeapon = 0x12;     // rod beam / arrow
+constexpr int kSlotRoomItem = 0x13; constexpr uint8_t kRoomItemNone = 0x3F;   // the room item (slot $13, ObjType 0: drawn by MoveAndDrawRoomItem, Z_07.asm); ObjState bit 7 = not active (the OW heart container of room $5F at ($C0,$90): Z_05.asm 8262)
 constexpr uint8_t kStateBombFlash = 0x13;             // a bomb in this state toggles the PPU's grayscale bit
 constexpr uint8_t kTypeMonsterSwordShot = 0x57;       // ObjType of a monster's sword shot
 // ObjTypes that glow (UpdateObject_JumpTable, Z_07.asm ~5321: type = index): $3F guard fire, $40 standing fire, $55/$56 fireballs (Zora,
