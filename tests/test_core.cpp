@@ -920,22 +920,22 @@ static void testShadow() {
         for (int i = 0; i < 900; i++) ps.update(*q);
         ShadowGame* e = find(ps, 0x36); ShadowGame* ee = e; CHECK(e && e->ready());
         uint8_t* er = e->nes().ram; const int B = 0x0F;
-        auto boom = [&](uint8_t* r, int x, int y, int state) { r[0x34F + B] = 0x5C; r[0x70 + B] = (uint8_t)x; r[0x84 + B] = (uint8_t)y; r[0xAC + B] = (uint8_t)state; r[0x98 + B] = 2; r[0x28 + B] = 7; };
+        auto boom = [&](uint8_t* r, int x, int y, int state) { r[0x70 + B] = (uint8_t)x; r[0x84 + B] = (uint8_t)y; r[0xAC + B] = (uint8_t)state; r[0x98 + B] = 2; r[0x28 + B] = 7; };
         boom(er, 100, 120, 0x50); ps.update(*q);                                                          // returning, still mid-screen: the stand-in Link is where it must go (the west edge)
-        CHECK_EQ((int)er[0x70], 0); CHECK_EQ((int)er[0x84], 120); CHECK_EQ((int)q->ram[0x34F + B], 0);
+        CHECK_EQ((int)er[0x70], 0); CHECK_EQ((int)er[0x84], 120); CHECK_EQ((int)q->ram[0xAC + B], 0);
         er[0x70 + B] = 0x0A; q->ram[0x12] = 5; ps.update(*q);                                              // at the west edge: into the real game, entering at its east edge
-        CHECK_EQ((int)q->ram[0x34F + B], 0x5C); CHECK_EQ((int)q->ram[0x70 + B], 0xE2); CHECK_EQ((int)q->ram[0x84 + B], 120); CHECK_EQ((int)q->ram[0xAC + B], 0x50); CHECK_EQ((int)q->ram[0x28 + B], 7);
-        CHECK_EQ((int)er[0x34F + B], 0); CHECK_EQ((int)er[0xAC + B], 0);                                   // (gone from the shadow)
+        CHECK_EQ((int)q->ram[0x70 + B], 0xE2); CHECK_EQ((int)q->ram[0x84 + B], 120); CHECK_EQ((int)q->ram[0xAC + B], 0x50); CHECK_EQ((int)q->ram[0x28 + B], 7);
+        CHECK_EQ((int)er[0xAC + B], 0);                                                                   // (gone from the shadow)
         q->ram[0x34F + B] = 0; q->ram[0xAC + B] = 0;
-        boom(er, 8, 90, 0x40); q->ram[0xAC + B] = 0x10; q->ram[0x34F + B] = 0x5C; ps.update(*q);           // the real boomerang slot is busy: it waits at the edge
-        CHECK_EQ((int)er[0x34F + B], 0x5C); CHECK_EQ((int)q->ram[0xAC + B], 0x10);                          // (the real game's own boomerang is untouched)
+        boom(er, 8, 90, 0x40); q->ram[0xAC + B] = 0x10; ps.update(*q);           // the real boomerang slot is busy: it waits at the edge
+        CHECK_EQ((int)er[0xAC + B], 0x40); CHECK_EQ((int)q->ram[0xAC + B], 0x10);                          // (the real game's own boomerang is untouched)
         q->ram[0xAC + B] = 0; q->ram[0x34F + B] = 0; er[0x34F + B] = 0; er[0xAC + B] = 0;
         {   // the real game is not playing yet (the glide, the walk in): the boomerang is aimed all the same, hovers at the edge out of the stand-in's reach, and is handed over once it plays
             boom(er, 40, 100, 0x50); q->ram[0x12] = 4; ps.animate(q.get());
             CHECK_EQ((int)er[0x70], 0);                                                                    // (aimed at the west edge during the glide)
             er[0x70 + B] = 0x0A; q->ram[0x34F + B] = 0; ps.animate(q.get()); ps.update(*q);
-            CHECK_EQ((int)er[0x34F + B], 0x5C); CHECK_EQ((int)er[0x70 + B], 14); CHECK_EQ((int)q->ram[0x34F + B], 0);   // (held at the edge band, not handed over)
-            q->ram[0x12] = 5; ps.update(*q); CHECK_EQ((int)q->ram[0x34F + B], 0x5C); CHECK_EQ((int)er[0x34F + B], 0);  // (played: handed over)
+            CHECK_EQ((int)er[0xAC + B], 0x50); CHECK_EQ((int)er[0x70 + B], 14); CHECK_EQ((int)q->ram[0xAC + B], 0);   // (held at the edge band, not handed over)
+            q->ram[0x12] = 5; ps.update(*q); CHECK_EQ((int)q->ram[0xAC + B], 0x50); CHECK_EQ((int)er[0xAC + B], 0);  // (played: handed over)
             q->ram[0x34F + B] = 0; q->ram[0xAC + B] = 0;
             boom(er, 10, 100, 0x50); q->ram[0x12] = 4;                                                       // nobody comes: after a while it is let go
             for (int i = 0; i < ShadowSet::kRelayPatience + 5; i++) { er[0x70 + B] = 3; ps.animate(q.get()); }
@@ -944,9 +944,11 @@ static void testShadow() {
         }
         ShadowGame* e2 = find(ps, 0x37); CHECK(e2 && e2->ready()); if (!e2) return;                                         // two screens east: shadow to shadow
         boom(e2->nes().ram, 5, 100, 0x40); ps.update(*q);
-        CHECK_EQ((int)er[0x34F + B], 0x5C); CHECK_EQ((int)er[0x70 + B], 0xE2); CHECK_EQ((int)e2->nes().ram[0x34F + B], 0);
+        CHECK_EQ((int)er[0xAC + B], 0x40); CHECK_EQ((int)er[0x70 + B], 0xE2); CHECK_EQ((int)e2->nes().ram[0xAC + B], 0);
         er[0x34F + B] = 0; er[0xAC + B] = 0;
-        boom(er, 100, 120, 0x20); ps.update(*q); CHECK_EQ((int)er[0x70 + B], 100); CHECK_EQ((int)er[0x34F + B], 0x5C);   // (still flying away: left alone)
+        boom(er, 100, 120, 0x20); ps.update(*q); CHECK_EQ((int)er[0x70 + B], 100); CHECK_EQ((int)er[0xAC + B], 0x20);   // (still flying away: left alone)
+        er[0xAC + B] = 0; q->ram[0xAC + B] = 0; boom(er, 5, 100, 0x85); ps.update(*q); CHECK_EQ((int)q->ram[0xAC + B], 0); CHECK_EQ((int)er[0xAC + B], 0x85);   // (bait in the slot is not a boomerang: never handed over)
+        er[0xAC + B] = 0;
         (void)ee;
     }
     {   // a corner screen has only the neighbours it has

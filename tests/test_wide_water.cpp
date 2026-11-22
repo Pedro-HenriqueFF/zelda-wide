@@ -379,6 +379,15 @@ void section27(Ctx& t) {
         const auto t1 = std::chrono::steady_clock::now();
         for (int i = 0; i < 5; i++) { Widescreen::WaterJob jb{cb.pixels.data(), cb.w, cb.h, 0, 0, 0, 768, 0, 1024, 176, &mb, false, true}; wb.waterTick = 100 + i; wb.waterPass(jb); }
         const auto t2 = std::chrono::steady_clock::now();
+        const auto t3 = std::chrono::steady_clock::now();
+        for (int i = 0; i < 20; i++) { Widescreen::WaterJob jb{cb.pixels.data(), cb.w, cb.h, 0, 0, 0, 800, 110, 832, 142, &mb, false, true, nullptr, false}; wb.waterTick = 100 + i; wb.waterPass(jb); }   // a window of 32 x 32 px, objects only: what a shadow with one monster needs
+        const auto t4 = std::chrono::steady_clock::now();
+        { const auto te = std::chrono::steady_clock::now(); for (int i = 0; i < 50; i++) wb.ensureWaterWorld();
+          std::fprintf(stderr, "water bench: ensureWaterWorld() when nothing changed: %.3f ms per call\n", std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - te).count() / 50); }
+        const auto t5 = std::chrono::steady_clock::now();
+        for (int i = 0; i < 20; i++) { Widescreen::WaterJob jb{cb.pixels.data(), cb.w, cb.h, 0, 0, 0, 768, 0, 1024, 176, &mb, false, true, nullptr, false}; wb.waterTick = 100 + i; wb.waterPass(jb); }   // a whole screen, objects only: what a shadow pass is today
+        std::fprintf(stderr, "water bench: shadow-style pass (whole screen, objects only) %.2f ms\n", std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t5).count() / 20);
+        std::fprintf(stderr, "water bench: pass B on a 32 x 32 window %.2f ms (the fixed cost of a call)\n", std::chrono::duration<double, std::milli>(t4 - t3).count() / 20);
         std::fprintf(stderr, "water bench 2048x900: pass A %.1f ms, pass B (one screen) %.1f ms\n", std::chrono::duration<double, std::milli>(t1 - t0).count() / 5, std::chrono::duration<double, std::milli>(t2 - t1).count() / 5);
     }
     if (std::getenv("ZW_TIME")) {                                    // benchmark: a whole frame (all features on) at the default and at a zoomed-out size

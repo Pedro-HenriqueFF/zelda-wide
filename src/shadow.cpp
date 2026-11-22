@@ -289,7 +289,7 @@ void ShadowSet::relayBoomerangs(Nes& real) {
         if (!g->visible()) continue;
         uint8_t* r = g->nes().ram;
         const int st = r[kObjState + kSlotBoomerang] & 0xF0;
-        if (r[kObjType + kSlotBoomerang] != kTypeBoomerang || (st != 0x40 && st != 0x50)) { g->boomWait = 0; continue; }       // (flying back to the thrower: states $40, $50)
+        if (st != 0x40 && st != 0x50) { g->boomWait = 0; continue; }                                    // (Link's weapons have no object type: the state says what is out; food in this slot has bit 7 set)       // (flying back to the thrower: states $40, $50)
         const int dc = (realRoom & 15) - (g->room() & 15), dr = (realRoom >> 4) - (g->room() >> 4);
         if (!dc && !dr) continue;
         const bool horiz = std::abs(dc) >= std::abs(dr);

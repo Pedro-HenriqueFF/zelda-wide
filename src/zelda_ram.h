@@ -35,7 +35,7 @@ constexpr uint16_t kObjShoveDir = 0xC0, kObjShoveDistance = 0xD3, kObjGridOffset
 // Link's coordinates at the screen edge in each direction (PlayerScreenEdgeBounds, Z_07.asm 2831: up $3D, down $DD, left $00, right $F0).
 constexpr uint8_t kEdgeUp = 0x3D, kEdgeDown = 0xDD, kEdgeLeft = 0x00, kEdgeRight = 0xF0, kCenterX = 0x78, kCenterY = 0x8D;
 constexpr uint16_t kObjTimer = 0x28, kObjMovingLimit = 0x380, kObjPosFrac = 0x3A8, kObjQSpeedFrac = 0x3BC, kObjAnimCounter = 0x3D0, kObjAnimFrame = 0x3E4;   // per-slot arrays the boomerang uses (Variables.inc, ObjVars.inc)
-constexpr int kSlotBoomerang = 0x0F; constexpr uint8_t kTypeBoomerang = 0x5C;   // Link's boomerang (and arrow): UpdateArrowOrBoomerang, Z_07.asm 3857
+constexpr int kSlotBoomerang = 0x0F;   // Link's boomerang (or food: state bit 7) lives in this weapon slot; weapons have no ObjType, ObjState != 0 means out (WieldBoomerang, Z_05.asm 2901; UpdateBoomerangOrFood, Z_07.asm 3763)
 constexpr uint16_t kObjDir = 0x98;       // facing: 1 right, 2 left, 4 down, 8 up
 constexpr uint8_t kModeSave = 0x0D;     // game mode: save (sub 0..2; sub 2 = done, back to the title)
 // The mazes (verified-facts.md, "Lost Woods / Lost Hills"): the room, and the room Link reaches when he leaves it the right way.
