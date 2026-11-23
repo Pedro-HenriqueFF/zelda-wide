@@ -131,7 +131,7 @@ void Widescreen::buildWaterWorld() {
 
 void Widescreen::waterPass(const WaterJob& j) {
     perf::Scope perfScope(j.objects ? perf::kWaterB : perf::kWaterA);
-    ensureWaterWorld();
+    if (!wwReady || !fxIsShadow || j.scenery || j.computeMask) ensureWaterWorld();       // (a shadow's objects-only pass uses the grid the frame's other passes have just checked)
     const int w = j.w, h = j.h, top = j.top, y0 = j.firstRow >= 0 ? j.firstRow : j.top;
     const float t = (float)waterTick;
     std::vector<uint8_t>& mask = *j.mask;                    // 0 land, 1 water, 2 water of a big body, 3 unknown (fog / outside the world)
@@ -209,16 +209,22 @@ void Widescreen::waterPass(const WaterJob& j) {
             }
         } });
     }
-    std::unique_ptr<uint32_t[]> srcBuf(new uint32_t[(size_t)w * h]); uint32_t* src = srcBuf.get();            // (the picture as it was: the reflections read it while the water is written)
-    const ReadRect rr = readRect(w, h, y0, j.cx0, j.cy0, j.cx1, j.cy1);
-    const int sx0 = rr.x0, sx1 = rr.x1, sy0 = rr.y0, sy1 = rr.y1;
-    const bool haveRaw = j.rawSrc && j.rawSrc->size() == (size_t)w * h;        // what lies outside the screen the game drew: the plain terrain, as if there were no fog
-    par::forRange(sy0, sy1, 16, [&](int ya, int yb) {
-        for (int y = ya; y < yb; y++) {
-            std::memcpy(&src[(size_t)y * w + sx0], &j.px[(size_t)y * w + sx0], sizeof(uint32_t) * (size_t)(sx1 - sx0));
-            if (haveRaw) for (int x = sx0; x < sx1; x++) if ((x < j.cx0 || x >= j.cx1 || y < j.cy0 || y >= j.cy1) && (*j.rawSrc)[(size_t)y * w + x]) src[(size_t)y * w + x] = (*j.rawSrc)[(size_t)y * w + x];
-        }
-    });
+    // The picture as it was: the reflections read it while the water is written. A job that only mirrors objects writes nowhere a later reflection reads (they never land on a
+    // sprite pixel, and sprite pixels are all they read), so the picture itself is the source: no copy.
+    uint32_t* src = j.px;
+    if (j.scenery) {
+        if (wSrcBuf.size() < (size_t)w * h) wSrcBuf.resize((size_t)w * h);                       // (kept between calls: only the window the pass reads is copied into it)
+        src = wSrcBuf.data();
+        const ReadRect rr = readRect(w, h, y0, j.cx0, j.cy0, j.cx1, j.cy1);
+        const int sx0 = rr.x0, sx1 = rr.x1, sy0 = rr.y0, sy1 = rr.y1;
+        const bool haveRaw = j.rawSrc && j.rawSrc->size() == (size_t)w * h;        // what lies outside the screen the game drew: the plain terrain, as if there were no fog
+        par::forRange(sy0, sy1, 16, [&](int ya, int yb) {
+            for (int y = ya; y < yb; y++) {
+                std::memcpy(&src[(size_t)y * w + sx0], &j.px[(size_t)y * w + sx0], sizeof(uint32_t) * (size_t)(sx1 - sx0));
+                if (haveRaw) for (int x = sx0; x < sx1; x++) if ((x < j.cx0 || x >= j.cx1 || y < j.cy0 || y >= j.cy1) && (*j.rawSrc)[(size_t)y * w + x]) src[(size_t)y * w + x] = (*j.rawSrc)[(size_t)y * w + x];
+            }
+        });
+    }
     const int rx0 = fxOx - j.camX, ry0 = fxOy - j.camY + top;                                   // the current screen on the canvas
     const bool refl = waterReflections, waves = waterWaves;                                           // (the two switches: End and Page Down)
     const Ppu* ppu = j.objects && refl ? lightPpu : nullptr;
@@ -233,7 +239,7 @@ void Widescreen::waterPass(const WaterJob& j) {
     std::vector<uint8_t>& linkMark = wLinkMark; linkMark.clear();                                                                 // Link's pixels when he counts as part of the stairs
     std::vector<uint8_t>& objSkip = wObjSkip; objSkip.clear();
     if (ppu) {
-        objSkip.assign((size_t)w * h, 0);
+        if (j.scenery) objSkip.assign((size_t)w * h, 0);                                            // (only the scenery pass looks at it)
         std::vector<uint8_t> claimed((size_t)Ppu::SPR_W * Ppu::SPR_H, 0);
         const int linkFeet = feetOf(fxNes->ram[kObjY]);
         bool linkStairs = !fxIsShadow && (kindAt(fxOx + fxNes->ram[kObjX] + 8, fxOy + linkFeet - HUD_H - 2) & kFull) != 0;
@@ -271,7 +277,7 @@ void Widescreen::waterPass(const WaterJob& j) {
                     claimed[id] = 1; maxPy = std::max(maxPy, py);
                     const int cx = rx0 + px, cy = ry0 + (py - HUD_H);
                     if (cx < 0 || cx >= w || cy < y0 || cy >= h) continue;
-                    objSkip[(size_t)cy * w + cx] = 1;
+                    if (j.scenery) objSkip[(size_t)cy * w + cx] = 1;
                     const bool shot = s == kSlotSword || s == 0x0E || s == 0x0F || s == 0x12 || (s >= 1 && s <= 12 && (ty == 0x53 || ty == 0x54 || ty == 0x57 || ty == 0x58 || ty == 0x59 || ty == 0x5B || ty == 0x5C));
                     mine.push_back({cx, cy, ry0 + (feetNes - HUD_H), !shot});     // (shots are copied, not mirrored: an arrow keeps pointing the way it flies)
                 }
@@ -317,12 +323,12 @@ void Widescreen::waterPass(const WaterJob& j) {
     };
     // Scenery. Every water pixel gets a mirror axis: the top edge of the water tile where its column's water starts (straight, also at rounded
     // corners), shared with the neighbouring columns of the same body (the highest within 20 px) so a rim column that starts lower continues the
-    // reflection of its neighbours. `shoreOwn` is the first water pixel of the column's run. A shore needs 3+ land pixels above it.
-    std::vector<int16_t>& axisOwn = wAxis; std::vector<int16_t>& shoreOwn = wShore;                  // (kept between frames: only the worked-on part is reset)
+    // reflection of its neighbours. A shore needs 3+ land pixels above it.
+    std::vector<int16_t>& axisOwn = wAxis;                                                           // (kept between frames: only the worked-on part is reset)
     if (j.scenery && refl) {                                                                         // (without reflections nothing reads the axes)
-        if (axisOwn.size() < (size_t)w * h) { axisOwn.assign((size_t)w * h, INT16_MIN); shoreOwn.assign((size_t)w * h, INT16_MIN); }
-        for (int y = wy0; y < wy1; y++) { std::fill(axisOwn.begin() + (size_t)y * w + wx0, axisOwn.begin() + (size_t)y * w + wx1, INT16_MIN); std::fill(shoreOwn.begin() + (size_t)y * w + wx0, shoreOwn.begin() + (size_t)y * w + wx1, INT16_MIN); }
-        std::vector<int> landRun(w, 0), axisC(w, 0), shoreC(w, 0); std::vector<uint8_t> have(w, 0);
+        if (axisOwn.size() < (size_t)w * h) axisOwn.assign((size_t)w * h, INT16_MIN);
+        for (int y = wy0; y < wy1; y++) { std::fill(axisOwn.begin() + (size_t)y * w + wx0, axisOwn.begin() + (size_t)y * w + wx1, INT16_MIN); }
+        std::vector<int> landRun(w, 0), axisC(w, 0); std::vector<uint8_t> have(w, 0);
         par::forRange(wx0, wx1, 128, [&](int xa, int xb) {                                           // (every column has its own state: columns go to different threads)
         for (int y = wy0; y < wy1; y++) {
             const uint8_t* mr = &mask[(size_t)y * w];
@@ -330,8 +336,8 @@ void Widescreen::waterPass(const WaterJob& j) {
                 const uint8_t m = mr[x];
                 if (m == 0) { landRun[x]++; continue; }
                 if (m == 3) { landRun[x] = 0; have[x] = 0; continue; }
-                if (landRun[x] >= 3) { axisC[x] = y - ((y - top + j.camY) & 7); shoreC[x] = y; have[x] = 1; }
-                if (have[x]) { axisOwn[(size_t)y * w + x] = (int16_t)axisC[x]; shoreOwn[(size_t)y * w + x] = (int16_t)shoreC[x]; }
+                if (landRun[x] >= 3) { axisC[x] = y - ((y - top + j.camY) & 7); have[x] = 1; }
+                if (have[x]) axisOwn[(size_t)y * w + x] = (int16_t)axisC[x];
                 landRun[x] = 0;
             }
         }

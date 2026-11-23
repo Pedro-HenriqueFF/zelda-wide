@@ -104,10 +104,12 @@ public:
     void dumpWaterDebug(const char* path);                                       // Home key: tile ids and water flags of the current screen
     std::vector<uint8_t> wwKind;                                                // per world tile (512 x 176): 1 water, 2 big body, 4 reflects whole
     bool wwReady = false, waterDone = false;                                    // waterDone: this picture's water was drawn by drawWorld (and the game's room by pass B)
-    std::vector<int16_t> wAxis, wShore;                                         // waterPass scratch (mirror axis and shore row per pixel)
+    std::vector<uint32_t> wSrcBuf;                                              // waterPass: the picture as it was
+    std::vector<int16_t> wAxis;                                                 // waterPass scratch (mirror axis per pixel)
     std::vector<uint8_t> wObjSkip, wLinkMark;                                   // (more waterPass scratch: kept between frames so their memory is reused, not given back and asked for again)
     std::vector<int> wIA, wIB;                                                  //  (the big-water tables)
     std::vector<uint32_t> wExt;                                                 //  (the copy pass B works on)
+    std::vector<uint32_t> wRawSpare; std::vector<uint16_t> wVis;                 // (drawWorld) the buffers of pass A, kept between frames (terrainRaw and wRawSpare trade places each frame)
     std::vector<uint32_t> terrainRaw;                                           // pass A's plain terrain (no fog, no effects on land): the reflections' source outside the current screen
     std::vector<uint8_t> terrainMask; int terrainW = 0, terrainH = 0, terrainCamX = 0, terrainCamY = 0;   // (mask and raw have kWaterMargin extra rows on top)   // pass A's water mask of the picture
     bool fxIsShadow = false;                                                    // (the pass runs on a shadow game's screen: no Link, no weapons)
@@ -139,7 +141,6 @@ public:
     bool spritesNearWater(const Nes& n, int room) const;   // does a sprite of a shadow's OAM have water within reach of its reflection (the shadows' water pass runs only then)
     const uint8_t* roomTilesFor(Nes& nes, int room) { return roomTiles(nes, room); }                    // (tests) a screen's tiles as drawn: the decode with the armos that woke in its shadow gone
     void testSetStatue(int room, int col, int row) { Cached& c = cache[room]; c.nStatue = 1; c.statue[0] = (uint16_t)(col << 8 | row); for (int dc = 0; dc < 2; dc++) for (int dr = 0; dr < 2; dr++) c.tiles[(col + dc) * OverworldMap::TILE_ROWS + row + dr] = (uint8_t)(0xC0 + dc * 2 + dr); }   // (tests) pretend the decode has a statue there
-    void gatherArmosTiles(const uint8_t* tiles, int room, float ox, float oy);   // blue glow on the armos statues of a screen (tiles until they wake), red on the secret one
     int lightRoom = -1;                            // the screen the sparkles belong to
     void drawSparkles(uint32_t* pix, int w, int h, int top, int camX, int camY, const Ppu& ppu);
     std::vector<uint8_t> curtainMask;                 // OverworldIntro: 1 where the curtain is open (the lighting skips the rest)
@@ -167,6 +168,7 @@ public:
     class ShadowSet* shadows = nullptr;   // N: the shadow games of the neighbouring screens, drawn into the margins (set by main.cpp)
     bool lighting = true;       // F1: day/night cycle (T = skip a quarter of the day) and dynamic lights
     int currentScreen() const { return fxRoom; }   // the overworld screen (row * 16 + column) of the last frame, -1 before the first
+    bool waterDirectObjects = true;               // (tests) a shadow's objects-only water pass works on the canvas itself; false = the old way through a copy (the results are the same)
     bool waterReflections = true;   // END: reflections of the shore, walls, Link, monsters and shots in the water
     bool waterWaves = true;         // PAGE DOWN: waves on big lakes and the sea
     bool waterOn() const { return waterReflections || waterWaves; }
@@ -241,7 +243,8 @@ private:
     int  lastTraceMode = -1, lastTraceKind = -1, lastTraceLayout = -1;
     int lastVerifiedRoom = -1;
 
-    struct Cached { int key = -1; bool anySecret = false; int nStatue = 0; uint16_t statue[8] = {}; uint8_t tiles[OverworldMap::TILES]; uint8_t secret[OverworldMap::TILES]; };   // statue: the armos squares (col << 8 | row) of the plain decode; key bits 9+: which of them woke in the screen's shadow
+    struct Cached { int key = -1; bool anySecret = false; int nStatue = 0; uint16_t statue[16] = {}; uint8_t tiles[OverworldMap::TILES]; uint8_t secret[OverworldMap::TILES]; };   // statue: the armos squares (col << 8 | row) of the plain decode; key bits 9+: which of them woke in the screen's shadow
+    void gatherArmosTiles(const uint8_t* tiles, int room, float ox, float oy, const Cached* known = nullptr);   // (known: the screen's statue squares are already listed, no need to look at all its tiles)   // blue glow on the armos statues of a screen (tiles until they wake), red on the secret one
     Cached cache[128];
 
     uint8_t fogBits[3][16] = {};

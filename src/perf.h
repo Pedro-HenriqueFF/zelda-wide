@@ -4,11 +4,12 @@
 
 namespace perf {
 
-enum Stage { kEmu, kRender, kWorld, kWaterA, kWaterB, kClouds, kLight, kUpload, kPresent, kWait, kPrep, kRoom, kBackdrop, kRoomWater, kStages };
-inline const char* const kNames[kStages] = {"emu", "render", "world", "waterA", "waterB", "clouds", "light", "upload", "present", "wait", "prep", "room", "backdrop", "roomWater"};
+enum Stage { kEmu, kRender, kWorld, kWaterA, kWaterB, kClouds, kLight, kUpload, kPresent, kWait, kPrep, kRoom, kBackdrop, kRoomWater, kShadowStep, kShadowDraw, kShadowLight, kStages };
+inline const char* const kNames[kStages] = {"emu", "render", "world", "waterA", "waterB", "clouds", "light", "upload", "present", "wait", "prep", "room", "backdrop", "roomWater", "shadowStep", "shadowDraw", "shadowLight"};
 inline bool enabled = false;
 inline double total[kStages] = {};      // ms since the last report
 inline int frames = 0;
+inline int shadowPasses = 0;            // shadow screens whose objects went through the water pass since the last report
 
 using Clock = std::chrono::steady_clock;
 inline Clock::time_point now() { return enabled ? Clock::now() : Clock::time_point(); }

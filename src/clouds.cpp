@@ -1,4 +1,5 @@
 #include "clouds.h"
+#include "parallel.h"
 #include <algorithm>
 #include <cmath>
 
@@ -114,33 +115,43 @@ void CloudField::shade(std::vector<uint32_t>& pixels, int w, int h, int topBand,
     const int rows = h - topBand;
     if (rows <= 0 || w <= 0) return;
     if (mask_.size() != (size_t)w * rows) mask_.assign((size_t)w * rows, 0);   // (kept all zero between frames: only the rows touched are cleared again)
+    // Which clouds touch the canvas (and rasterise the ones that do for the first time) is settled here, one thread; then bands of rows are stamped and shaded independently
+    // (a pixel's mask is the largest of the clouds over it, whatever the order: the result does not depend on the threads).
+    struct Inst { const Cloud* c; int px, py, x0, x1, y0, y1; };
+    std::vector<Inst> inst; bool all = false;
     int r0 = rows, r1 = -1;                                      // rows that have any cloud in them
     for (Cloud& c : c_) {
-        if (c.fillAll) { std::fill(mask_.begin(), mask_.end(), 255); r0 = 0; r1 = rows - 1; break; }
+        if (c.fillAll) { all = true; r0 = 0; r1 = rows - 1; break; }
         for (int ox = -1; ox <= 1; ox++)
             for (int oy = -1; oy <= 1; oy++) {
                 const int px = (int)std::lround(c.x) + ox * kWorldW + c.bx - camX, py = (int)std::lround(c.y) + oy * kWorldH + c.by - camY;   // mask origin on the canvas
                 const int x0 = std::max(0, px), x1 = std::min(w, px + c.bw), y0 = std::max(0, py), y1 = std::min(rows, py + c.bh);
                 if (x0 >= x1 || y0 >= y1) continue;
                 if (c.mask.empty()) raster(c);
-                for (int y = y0; y < y1; y++) {
-                    const uint8_t* src = &c.mask[(size_t)(y - py) * c.bw + (x0 - px)];
-                    uint8_t* dst = &mask_[(size_t)y * w + x0];
-                    for (int x = x0; x < x1; x++, src++, dst++) if (*src > *dst) *dst = *src;
-                }
+                inst.push_back({&c, px, py, x0, x1, y0, y1});
                 r0 = std::min(r0, y0); r1 = std::max(r1, y1 - 1);
             }
     }
-    for (int y = r0; y <= r1; y++) {
-        uint8_t* m = &mask_[(size_t)y * w];
-        uint32_t* row = &pixels[(size_t)(topBand + y) * w];
-        for (int x = 0; x < w; x++) {
-            if (!m[x]) continue;
-            const int f = 256 - maxDark * m[x] / 255;           // the flat shade inside, a short ramp at the edge (a little less darkening for blue: cool)
-            const uint32_t p = row[x];
-            const int r = (p >> 16 & 255) * f >> 8, g = (p >> 8 & 255) * f >> 8, b = (int)(p & 255) * std::min(256, f + 10) >> 8;
-            row[x] = 0xFF000000u | (r << 16) | (g << 8) | b;
-            m[x] = 0;
+    if (r1 < r0) return;
+    par::forRange(r0, r1 + 1, 16, [&](int ya, int yb) {
+        if (all) std::fill(mask_.begin() + (size_t)ya * w, mask_.begin() + (size_t)yb * w, (uint8_t)255);
+        else for (const Inst& n : inst)
+            for (int y = std::max(ya, n.y0); y < std::min(yb, n.y1); y++) {
+                const uint8_t* src = &n.c->mask[(size_t)(y - n.py) * n.c->bw + (n.x0 - n.px)];
+                uint8_t* dst = &mask_[(size_t)y * w + n.x0];
+                for (int x = n.x0; x < n.x1; x++, src++, dst++) if (*src > *dst) *dst = *src;
+            }
+        for (int y = ya; y < yb; y++) {
+            uint8_t* m = &mask_[(size_t)y * w];
+            uint32_t* row = &pixels[(size_t)(topBand + y) * w];
+            for (int x = 0; x < w; x++) {
+                if (!m[x]) continue;
+                const int f = 256 - maxDark * m[x] / 255;           // the flat shade inside, a short ramp at the edge (a little less darkening for blue: cool)
+                const uint32_t p = row[x];
+                const int r = (p >> 16 & 255) * f >> 8, g = (p >> 8 & 255) * f >> 8, b = (int)(p & 255) * std::min(256, f + 10) >> 8;
+                row[x] = 0xFF000000u | (r << 16) | (g << 8) | b;
+                m[x] = 0;
+            }
         }
-    }
+    });
 }

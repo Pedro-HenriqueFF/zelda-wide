@@ -188,21 +188,28 @@ void Widescreen::gatherStaticLights(Nes& nes, int room, int slot, bool live, int
     for (int r2 = 0; r2 < 128; r2++) {                                      // every explored screen, wherever the camera is
         if (r2 == room || !discovered(slot, r2)) continue;
         const uint8_t* nb = roomTiles(nes, r2);
-        if (nb) gatherArmosTiles(nb, r2, (float)(ox + ((r2 & 15) - (room & 15)) * ROOM_W), (float)(oy + ((r2 >> 4) - (room >> 4)) * ROOM_H));
+        if (nb) gatherArmosTiles(nb, r2, (float)(ox + ((r2 & 15) - (room & 15)) * ROOM_W), (float)(oy + ((r2 >> 4) - (room >> 4)) * ROOM_H), &cache[r2]);
     }
 }
 
-void Widescreen::gatherArmosTiles(const uint8_t* tiles, int room, float ox, float oy) {
+void Widescreen::gatherArmosTiles(const uint8_t* tiles, int room, float ox, float oy, const Cached* known) {
     const unsigned t = dayClock.tick;
+    auto one = [&](int col, int row) {
+        if (tiles[col * OverworldMap::TILE_ROWS + row] != 0xC0 || tiles[(col + 1) * OverworldMap::TILE_ROWS + row] != 0xC2) return;   // the top-left of an armos' 2x2 (one that woke is gone)
+        bool secret = false;
+        for (int k = 0; k < 7; k++) secret = secret || (kSecretArmosRoom[k] == room && kSecretArmosX[k] == col * 8 && kSecretArmosY == row * 8 + HUD_H);
+        const float pulse = 0.85f + 0.15f * std::sin(t * 0.08f + col);
+        const float x = ox + col * 8 + 8, y = oy + row * 8 + 8;
+        lightSources.push_back(secret ? lighting::Source{x, y, 34, 0.9f * pulse, 0.5f, 255, 60, 40} : lighting::Source{x, y, 32, 0.8f * pulse, 0.45f, 70, 130, 255});
+    };
+    if (known) {                                                              // (the squares in the order a scan finds them: by column, then row)
+        std::vector<uint16_t> sq(known->statue, known->statue + known->nStatue);
+        std::sort(sq.begin(), sq.end());
+        for (uint16_t q : sq) one(q >> 8, q & 0xFF);
+        return;
+    }
     for (int col = 0; col + 1 < OverworldMap::TILE_COLS; col++)
-        for (int row = 0; row + 1 < OverworldMap::TILE_ROWS; row++) {
-            if (tiles[col * OverworldMap::TILE_ROWS + row] != 0xC0 || tiles[(col + 1) * OverworldMap::TILE_ROWS + row] != 0xC2) continue;   // the top-left of an armos' 2x2
-            bool secret = false;
-            for (int k = 0; k < 7; k++) secret = secret || (kSecretArmosRoom[k] == room && kSecretArmosX[k] == col * 8 && kSecretArmosY == row * 8 + HUD_H);
-            const float pulse = 0.85f + 0.15f * std::sin(t * 0.08f + col);
-            const float x = ox + col * 8 + 8, y = oy + row * 8 + 8;
-            lightSources.push_back(secret ? lighting::Source{x, y, 34, 0.9f * pulse, 0.5f, 255, 60, 40} : lighting::Source{x, y, 32, 0.8f * pulse, 0.45f, 70, 130, 255});
-        }
+        for (int row = 0; row + 1 < OverworldMap::TILE_ROWS; row++) one(col, row);
 }
 
 void Widescreen::applyNightLight(Canvas& c, int top, int camX, int camY) {

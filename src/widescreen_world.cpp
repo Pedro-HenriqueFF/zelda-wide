@@ -267,7 +267,7 @@ void Widescreen::drawWorld(Nes& nes, Canvas& out, int camX, int camY, int slot, 
     };
 
     const bool water = waterOn() && fxNes && enabled;                      // the water is drawn on the terrain BEFORE the fog is mixed in
-    std::vector<uint32_t> raw; std::vector<uint16_t> vis;
+    std::vector<uint32_t>& raw = wRawSpare; std::vector<uint16_t>& vis = wVis;   // (kept between frames: no 4-8 MB allocation, and its page faults, every frame)
     const int M = water ? kWaterMargin : 0;                              // rows of terrain above the picture: the reflections read them whatever the camera shows
     if (water) { raw.assign((size_t)W * (H + M), 0); vis.assign((size_t)W * (H + M), 0); }
     uint8_t chr[4096]; for (int i = 0; i < 4096; i++) chr[i] = nes.cart.ppuRead((uint16_t)(patBase + i));   // (the tile patterns, read once per frame instead of once per pixel)
@@ -302,7 +302,9 @@ void Widescreen::drawWorld(Nes& nes, Canvas& out, int camX, int camY, int slot, 
             }
     }
     par::forRange(topBand - M, H, 8, [&](int ya, int yb) {
-    std::vector<uint32_t> scratch(water ? W : 0);                        // (rows above the picture are only needed as terrain for the water: this thread's own)
+    static thread_local std::vector<uint32_t> scratchTL;                 // (rows above the picture are only needed as terrain for the water: this thread's own)
+    if (water && (int)scratchTL.size() < W) scratchTL.resize(W);
+    std::vector<uint32_t>& scratch = scratchTL;
     for (int y = ya; y < yb; y++) {
         const int wy = camY + (y - topBand);
         const int ry = floorDiv(wy, ROOM_H);
@@ -393,7 +395,7 @@ void Widescreen::drawWorld(Nes& nes, Canvas& out, int camX, int camY, int slot, 
                 }
             }
         });
-        terrainRaw = std::move(raw);
+        terrainRaw.swap(raw);                                            // (the buffer of the frame before becomes the next frame's scratch)
         waterDone = true;
     }
 }

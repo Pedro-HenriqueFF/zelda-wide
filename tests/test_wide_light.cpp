@@ -2,8 +2,10 @@
 #include <memory>
 #include "test_wide_common.h"
 #include "lighting.h"
+#include "parallel.h"
 #include "widescreen_internal.h"
 #include <cmath>
+#include <algorithm>
 #include "zelda_ram.h"
 #include <cstring>
 
@@ -20,6 +22,45 @@ static double lumaBlock(const Canvas& c, int x0, int y0, int n) {
 
 void section26(Ctx& t) {
     SECTION_BINDINGS
+    // 26-fast. Full daylight: only the pixels a glow with `add` (the armos halos) reaches are visited, the rest of the canvas is left alone; the result is exactly the general path's.
+    //          Lights that reach no pixel of the canvas change nothing, whether they are there or not.
+    {
+        const int W = 700, H = 420, top = 40;
+        std::vector<uint32_t> img((size_t)W * H); for (size_t i = 0; i < img.size(); i++) img[i] = 0xFF000000u | (uint32_t)((i * 2246822519u) >> 8 & 0x00FFFFFFu);
+        std::vector<lighting::Source> src;
+        src.push_back({100, 90, 32, 0.8f, 0.45f, 70, 130, 255}); src.push_back({112, 100, 34, 0.9f, 0.5f, 255, 60, 40});     // two overlapping halos
+        src.push_back({650, 300, 32, 0.8f, 0.45f, 70, 130, 255}); src.push_back({-20, 60, 32, 0.8f, 0.45f, 70, 130, 255});    // one by the right edge, one half off the left
+        src.push_back({300, 200, 50, 1.0f, 0.0f, 255, 150, 60});                                                                // a plain light (no add: nothing to screen)
+        lighting::Params day; day.ambient = 1; day.warm = 0; day.nightTint = 0; day.vision = true; day.vx = 300; day.vy = 200;
+        std::vector<uint32_t> a = img, b = img, c = img;
+        lighting::apply(a.data(), W, H, top, H, 0, 0, day, src);
+        lighting::Params slow = day; slow.slow = true; lighting::apply(b.data(), W, H, top, H, 0, 0, slow, src);
+        CHECK(a == b);                                                                                // (the shortcut = the general path)
+        size_t changed = 0; for (size_t i = 0; i < a.size(); i++) changed += a[i] != img[i];
+        CHECK(changed > 500); CHECK(changed < a.size() / 10);                                         // (the halos did something, to a small part of the canvas)
+        CHECK(std::equal(a.begin(), a.begin() + (size_t)W * top, img.begin()));                      // (nothing above the picture)
+        std::vector<lighting::Source> far = src; far.push_back({5000, 5000, 60, 1, 0.5f, 255, 255, 255}); far.push_back({-900, 100, 60, 1, 0.5f, 255, 255, 255}); far.push_back({200, -400, 60, 1, 0.5f, 255, 255, 255});
+        lighting::apply(c.data(), W, H, top, H, 0, 0, day, far); CHECK(c == a);                      // (lights far off the canvas: nothing)
+        lighting::Params night = day; night.ambient = 0.4f; night.nightTint = 1; std::vector<uint32_t> n1 = img, n2 = img;
+        lighting::apply(n1.data(), W, H, top, H, 0, 0, night, src); lighting::apply(n2.data(), W, H, top, H, 0, 0, night, far); CHECK(n1 == n2);   // (at night too)
+        const int savedThreads = par::maxThreads(); par::maxThreads() = 1; std::vector<uint32_t> t1 = img; lighting::apply(t1.data(), W, H, top, H, 0, 0, day, src); par::maxThreads() = 8; std::vector<uint32_t> t8 = img; lighting::apply(t8.data(), W, H, top, H, 0, 0, day, src); par::maxThreads() = savedThreads; CHECK(t1 == t8);
+        {   // the armos halos of a screen from its listed statue squares are the ones a look at all its tiles finds (same sources, same order)
+            auto w_h = std::make_unique<Widescreen>(); Widescreen& w = *w_h;
+            std::vector<uint8_t> tt(OverworldMap::TILES, 0x24);
+            const int sq[][2] = {{14, 8}, {2, 4}, {2, 12}, {20, 4}, {6, 16}};                                    // (column, row) of armos squares, not in scan order
+            Widescreen::Cached& cc = w.cache[0x24]; cc.nStatue = 0;
+            for (const auto& q : sq) {
+                tt[q[0] * OverworldMap::TILE_ROWS + q[1]] = 0xC0; tt[q[0] * OverworldMap::TILE_ROWS + q[1] + 1] = 0xC1; tt[(q[0] + 1) * OverworldMap::TILE_ROWS + q[1]] = 0xC2; tt[(q[0] + 1) * OverworldMap::TILE_ROWS + q[1] + 1] = 0xC3;
+                cc.statue[cc.nStatue++] = (uint16_t)(q[0] << 8 | q[1]);
+            }
+            w.lightSources.clear(); w.gatherArmosTiles(tt.data(), 0x24, 256.0f, 0.0f); const auto scan = w.lightSources;
+            w.lightSources.clear(); w.gatherArmosTiles(tt.data(), 0x24, 256.0f, 0.0f, &cc); const auto known = w.lightSources;
+            CHECK_EQ(scan.size(), (size_t)5); CHECK_EQ(known.size(), scan.size());
+            for (size_t i = 0; i < std::min(scan.size(), known.size()); i++) CHECK(scan[i].x == known[i].x && scan[i].y == known[i].y && scan[i].power == known[i].power && scan[i].b == known[i].b);
+            tt[14 * OverworldMap::TILE_ROWS + 8] = 0x26;                                                       // one woke: no halo any more, from the list as from the scan
+            w.lightSources.clear(); w.gatherArmosTiles(tt.data(), 0x24, 256.0f, 0.0f, &cc); CHECK_EQ(w.lightSources.size(), (size_t)4);
+        }
+    }
     // 26a. The clock and the lighting pass on their own.
     {
         using namespace lighting;

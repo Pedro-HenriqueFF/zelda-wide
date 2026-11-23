@@ -22,6 +22,11 @@ void Widescreen::roomWater(Canvas& c, int camX, int camY, bool objects, bool sce
     const int M = kWaterMargin, PW = c.w, PH = c.h;
     const int rx0 = fxOx - camX, ry0 = fxOy - camY + topBand + M;
     WaterJob j{nullptr, PW, PH + M, topBand + M, camX, camY, std::max(rx0, 0), std::max(ry0, topBand + M), std::min(rx0 + ROOM_W, PW), std::min(ry0 + ROOM_H, PH + M), &terrainMask, false, objects, nullptr, scenery, &terrainRaw, 0};
+    if (!scenery && waterDirectObjects) {                                       // objects only (a shadow's screen): the pass works on the canvas itself, no copies
+        j.px = c.pixels.data() - (size_t)M * PW;                                // (its rows count the M margin rows above the canvas; it starts at the canvas and never reaches into them)
+        waterPass(j);
+        return;
+    }
     // The picture with the plain terrain above it. The pass only reads what readRect says (the screen it works on and what its reflections and
     // waves look at), so only that is copied: the rest of the buffer is never looked at.
     std::vector<uint32_t>& ext = wExt;

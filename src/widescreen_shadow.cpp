@@ -4,6 +4,7 @@
 #include "widescreen.h"
 #include "shadow.h"
 #include "zelda_ram.h"
+#include "perf.h"
 
 // curRoom: the screen Link is in (its shadow is not drawn: the game's own picture shows it), -1 in the glide. onlyCurrent: draw only that screen's shadow (over the game's picture,
 // for the few frames between the end of the glide and the hand-off).
@@ -23,6 +24,7 @@ bool Widescreen::spritesNearWater(const Nes& n, int room) const {
 }
 
 void Widescreen::drawShadowSprites(Canvas& out, int camX, int camY, int topBand, int curRoom, int slot, bool onlyCurrent) {
+    perf::Scope perfScope(perf::kShadowDraw);
     if (!shadows || !shadows->enabled || !enabled) return;
     const FlashEffect noFlash;
     for (ShadowGame* g : shadows->games()) {
@@ -44,7 +46,7 @@ void Widescreen::drawShadowSprites(Canvas& out, int camX, int camY, int topBand,
         if (!spritesNearWater(n, g->room())) continue;                          // (the pass costs ~0.3 ms a screen: only where a reflection could fall on water)
         Nes* sN = fxNes; const Ppu* sP = lightPpu; const int sOx = fxOx, sOy = fxOy, sRoom = fxRoom;
         fxNes = &n; lightPpu = &n.ppu; fxOx = (g->room() & 15) * ROOM_W; fxOy = (g->room() >> 4) * ROOM_H; fxRoom = g->room(); fxIsShadow = true;
-        roomWater(out, camX, camY, true, false);
+        roomWater(out, camX, camY, true, false); perf::shadowPasses++;
         fxNes = sN; lightPpu = sP; fxOx = sOx; fxOy = sOy; fxRoom = sRoom; fxIsShadow = false;
     }
 }
@@ -52,6 +54,7 @@ void Widescreen::drawShadowSprites(Canvas& out, int camX, int camY, int topBand,
 // What glows on the neighbouring screens: dropped items and fairies glow and glitter like the ones of Link's own screen, the guard fires and the flames of cave people
 // glow. Light-space = the overworld's world pixels (the same as gatherLights with the screen's origin).
 void Widescreen::gatherShadowLights(int curRoom, int slot, bool sparkle, bool withBridge) {
+    perf::Scope perfScope(perf::kShadowLight);
     if (!shadows || !shadows->enabled || !enabled) return;
     const unsigned t = dayClock.tick;
     for (ShadowGame* g : shadows->games()) {

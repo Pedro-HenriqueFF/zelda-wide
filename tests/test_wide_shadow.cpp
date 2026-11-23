@@ -78,6 +78,9 @@ void section32(Ctx& t) {
         set.active = {&set.pool[0]};
         const std::vector<uint32_t> dry = picture(nullptr), wet = picture(&set);
         CHECK(differing(dry, wet) > 128);                                            // (the monster's 128 pixels and its mirror image)
+        m.waterTick = 500; const std::vector<uint32_t> direct = picture(&set);                          // the direct objects-only pass and the old one through a copy give the same picture
+        m.waterDirectObjects = false; m.waterTick = 500; const std::vector<uint32_t> viaCopy = picture(&set); m.waterDirectObjects = true;
+        CHECK(direct == viaCopy); CHECK(differing(dry, direct) > 128);
         sn.ram[kObjType + 1] = 0; const std::vector<uint32_t> noMonster = picture(&set);
         CHECK_EQ(differing(dry, noMonster), (size_t)128);                            // (no object in the slots: the sprite is drawn, nothing is mirrored)
         sn.ram[kObjType + 1] = 0x10; m.waterReflections = false;

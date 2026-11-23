@@ -4,10 +4,25 @@
 #include <cstdio>
 #include <algorithm>
 #include "test_wide_common.h"
+#include "../src/parallel.h"
 #include "../src/widescreen_internal.h"
 
 void section25(Ctx& t) {
     SECTION_BINDINGS
+    // 25a0. The cloud shading works in bands of rows on several threads: the same picture as with one thread, and the clouds do darken (a wide canvas, clouds spread over it)
+    {
+        const int W = 1500, H = 700, band = 40;
+        CloudField c1, c8; c1.init(11); c8.init(11);
+        for (int i = 0; i < 300; i++) { c1.step(); c8.step(); }
+        auto make = [&]() { std::vector<uint32_t> p((size_t)W * H); for (size_t i = 0; i < p.size(); i++) p[i] = 0xFF000000u | (uint32_t)((i * 2654435761u) >> 8 & 0x00FFFFFFu) | 0x00404040u; return p; };
+        std::vector<uint32_t> before = make(), a = before, b = before; const int saved = par::maxThreads();
+        par::maxThreads() = 1; c1.shade(a, W, H, band, 700, 300);
+        par::maxThreads() = 8; c8.shade(b, W, H, band, 700, 300); par::maxThreads() = saved;
+        CHECK(a == b);                                                                        // (the same with 1 and with 8 threads)
+        size_t darker = 0, brighter = 0; for (size_t i = 0; i < a.size(); i++) { const int pa = (a[i] >> 8 & 255), pb = (before[i] >> 8 & 255); darker += pa < pb; brighter += pa > pb; }
+        CHECK(darker > 1000); CHECK_EQ(brighter, (size_t)0);
+        CHECK(std::equal(a.begin(), a.begin() + (size_t)W * band, before.begin()));           // (not the status bar)
+    }
     // 25a. Cloud shadows: they drift, keep a heading for a while then turn, wrap around the world, and darken the finished picture
     //      (sprites included) but never brighten it and never touch the status bar.
     {

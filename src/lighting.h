@@ -24,6 +24,7 @@ struct Params {
     float vx = 0, vy = 0;        // where (same space as Source)
     const uint8_t* mask = nullptr; uint8_t maskValue = 0;   // only pixels where mask[y * w + x] == maskValue (one of two rooms side by side)
     float visionInner = 56, visionOuter = 150;   // fully lit inside the inner radius, ambient beyond the outer one
+    bool slow = false;                           // (tests) always the general path, never the daylight shortcut
 };
 
 constexpr int kDayFrames = 36000;                       // one whole day = 10 minutes at 60 fps

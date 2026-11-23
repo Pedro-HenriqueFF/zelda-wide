@@ -158,7 +158,7 @@ int main(int argc, char** argv) {
 #else
         std::fprintf(o, "build: NOT optimized (no NDEBUG: a Debug build?)\n");
 #endif
-        std::fprintf(o, "times are ms per frame, averaged over one second: emu = the game, render = the compositor (world includes waterA), prep = clearing the canvas, room = the game's own picture of the screen (sprites, effects), backdrop = the copy kept for the cave box, upload = canvas to the GPU + drawing, present, wait = pacing sleep\n");
+        std::fprintf(o, "times are ms per frame, averaged over one second: emu = the game, render = the compositor (world includes waterA), prep = clearing the canvas, room = the game's own picture of the screen (sprites, effects), backdrop = the copy kept for the cave box, upload = canvas to the GPU + drawing, present, wait = pacing sleep, shadows = the neighbour screens running (how many are up; step = their games, draw = their sprites and reflections, light = their glow, water passes = shadow screens per frame whose monsters went through the water pass)\n");
         std::fflush(o);
     }
     Canvas canvas;
@@ -241,14 +241,14 @@ int main(int argc, char** argv) {
         if (saveFade > 0 && saveFade < kFadeFrames) {
             saveFade++;
         } else if (wide.gliding()) {
-            shadows.animate(&nes);                                   // the monsters of the neighbouring screens keep moving while the camera glides
+            { perf::Scope ps(perf::kShadowStep); shadows.animate(&nes); }                                   // the monsters of the neighbouring screens keep moving while the camera glides
         } else if (!wide.mazeFading()) {
             nes.pad1 = input;
             if (saveFade >= kFadeFrames) { saveFade = 0; holdBlack = 1; wide.requestSave(nes); }
             wide.prepareFrame(nes);
             nes.runFrame();
             wide.afterFrame(nes);
-            shadows.update(nes);                                 // the shadow games of the neighbouring screens (N)
+            { perf::Scope ps(perf::kShadowStep); shadows.update(nes); }                                 // the shadow games of the neighbouring screens (N)
 
             // Scrolling to the next overworld screen (mode 7) is skipped: fast-forward the game's own scroll
             // animation without showing it, then let Link walk the few pixels the game moved him (startGlide).
@@ -417,13 +417,14 @@ int main(int argc, char** argv) {
             SDL_SetWindowTitle(win, title);
             if (perf::enabled) {
                 const double f = fpsFrames, *t = perf::total;
-                char line[480];
-                std::snprintf(line, sizeof line, "%d fps | emu %.1f | render %.1f (world %.1f, waterA %.1f, waterB %.1f, clouds %.1f, light %.1f) | prep %.1f, room %.1f (water %.1f), backdrop %.1f | upload %.1f | present %.1f | wait %.1f | canvas %dx%d | screen %d",
+                char line[600];
+                std::snprintf(line, sizeof line, "%d fps | emu %.1f | render %.1f (world %.1f, waterA %.1f, waterB %.1f, clouds %.1f, light %.1f) | prep %.1f, room %.1f (water %.1f), backdrop %.1f | upload %.1f | present %.1f | wait %.1f | shadows %d up: step %.1f, draw %.1f, light %.1f, water passes %.1f | canvas %dx%d | screen %d",
                               fpsFrames, t[perf::kEmu] / f, t[perf::kRender] / f, t[perf::kWorld] / f, t[perf::kWaterA] / f, t[perf::kWaterB] / f, t[perf::kClouds] / f, t[perf::kLight] / f,
-                              t[perf::kPrep] / f, t[perf::kRoom] / f, t[perf::kRoomWater] / f, t[perf::kBackdrop] / f, t[perf::kUpload] / f, t[perf::kPresent] / f, t[perf::kWait] / f, canvas.w, canvas.h, scr);
+                              t[perf::kPrep] / f, t[perf::kRoom] / f, t[perf::kRoomWater] / f, t[perf::kBackdrop] / f, t[perf::kUpload] / f, t[perf::kPresent] / f, t[perf::kWait] / f, (int)shadows.games().size(), t[perf::kShadowStep] / f, t[perf::kShadowDraw] / f, t[perf::kShadowLight] / f, perf::shadowPasses / f, canvas.w, canvas.h, scr);
                 SDL_SetWindowTitle(win, (std::string("Zelda Wide - ") + line).c_str());
                 if (perfFile) { std::fprintf(perfFile, "%s\n", line); std::fflush(perfFile); }
                 for (double& d : perf::total) d = 0;
+                perf::shadowPasses = 0;
             }
             fpsFrames = 0; fpsMark = now;
         }

@@ -23,7 +23,7 @@ const uint8_t* Widescreen::roomTiles(Nes& nes, int room) {
         if (plain) {                                                     // (the statues of the plain decode: where an armos can wake)
             c.nStatue = 0;
             for (int col = 0; col + 1 < OverworldMap::TILE_COLS; col++)
-                for (int row = 0; row + 1 < OverworldMap::TILE_ROWS && c.nStatue < 8; row++) {
+                for (int row = 0; row + 1 < OverworldMap::TILE_ROWS && c.nStatue < 16; row++) {
                     const int a = col * OverworldMap::TILE_ROWS + row, b = a + OverworldMap::TILE_ROWS;
                     if (c.tiles[a] == zelda::kArmosTile && c.tiles[a + 1] == zelda::kArmosTile + 1 && c.tiles[b] == zelda::kArmosTile + 2 && c.tiles[b + 1] == zelda::kArmosTile + 3) c.statue[c.nStatue++] = (uint16_t)(col << 8 | row);
                 }
