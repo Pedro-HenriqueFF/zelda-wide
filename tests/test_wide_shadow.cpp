@@ -1,6 +1,7 @@
 // Section 32: the neighbouring screens running (shadow games) are drawn into the margins.
 #include <memory>
 #include "test_wide_common.h"
+#include "../src/parallel.h"
 #include "shadow.h"
 #include "zelda_ram.h"
 #include "widescreen_internal.h"
@@ -246,6 +247,28 @@ void section32(Ctx& t) {
         CHECK_EQ(count(true), (size_t)1);
         if (!m.lightSources.empty()) CHECK(m.lightSources[0].b > m.lightSources[0].r);
         sn.ram[kObjType + 4] = 0; set.active.clear(); m.shadows = nullptr; m.lightSources.clear(); m.sparkles.clear();
+    }
+    {   // the widest zoom with a shadow on every screen of the canvas (7 x 5), monsters everywhere and water flagged all over: nothing reads or writes outside its buffers (the delivery build runs this
+        // under the sanitizers), the picture is still there and the thread count does not matter
+        auto big_h = std::make_unique<Widescreen>(); Widescreen& big = *big_h; std::string berr; big.init(*nes, berr); big.unfogAnim = false; big.cloudShadow = false; big.fog = false;
+        ShadowSet many; many.enabled = true; many.forceSpinSteps = ShadowSet::kSpinStepsPerFrame;
+        int used = 0;
+        for (int dr = -2; dr <= 2; dr++) for (int dc = -3; dc <= 3; dc++) {
+            const int rr = (room >> 4) + dr, cc = (room & 15) + dc;
+            if (rr < 0 || rr > 7 || cc < 0 || cc > 15 || (dr == 0 && dc == 0) || used >= ShadowSet::kPool) continue;
+            ShadowGame& g = many.pool[used++]; g.adopt(*nes, rr * 16 + cc); many.active.push_back(&g);
+            for (int k = 0; k < 12; k++) monster(g, 24 + k, 20 + (k * 37 + used * 11) % 216, 70 + (k * 29 + used * 7) % 110);
+            Nes& gn = g.nes(); gn.ram[kObjX + kSlotBombB] = 100; gn.ram[kObjY + kSlotBombB] = 120; gn.ram[kObjState + kSlotBombB] = kStateBombFlash; gn.ram[kObjTimer + kSlotBombB] = 0x15;
+        }
+        CHECK(used >= 20);
+        big.viewHeight = 704; big.shadows = &many; many.enabled = true;
+        for (int i = 0; i < 4; i++) frames(big, 1, aspect);                                                       // (the first frames build the water grid; then flag it as water everywhere)
+        if (big.wwKind.size() >= (size_t)GW * GH) for (auto& k : big.wwKind) k |= 1;
+        const int savedThreads = par::maxThreads();
+        par::maxThreads() = 1; frames(big, 2, aspect); const std::vector<uint32_t> p1 = t.c.pixels;
+        par::maxThreads() = 8; frames(big, 2, aspect); par::maxThreads() = savedThreads;
+        CHECK(!p1.empty()); CHECK(big.shadows == &many);
+        big.shadows = nullptr; many.active.clear();
     }
     {   // the shadows' water pass is for screens with a sprite that has water in reach of its reflection (16 px under the feet), not for every screen with water and a monster
         if (m.wwKind.size() < (size_t)GW * GH) m.wwKind.assign((size_t)GW * GH, 0);

@@ -1,5 +1,6 @@
 // Section 27: water reflections and waves.
 #include <memory>
+#include <algorithm>
 #include "test_wide_common.h"
 #include "widescreen_internal.h"
 #include "parallel.h"
@@ -323,6 +324,20 @@ void section27(Ctx& t) {
         int touched = 0; for (size_t i = 0; i < c1.pixels.size(); i++) touched += c1.pixels[i] != orig.pixels[i];
         CHECK(touched > 20000);                                                                       // (the pass did something: reflections and waves)
         CHECK(c1.pixels == c2.pixels); CHECK(m1 == m2);
+        {   // An objects-only job (a neighbour screen's reflections) works on the canvas buffer itself, which does not hold the margin rows above the picture: a sprite pixel in the margin has no
+            // picture to read, so it makes no reflection and nothing is read before the buffer (on Windows that read was an access violation). Sentinel rows sit right before the buffer.
+            const int R0 = 8, W = 1024, H = 400, guard = 4;
+            std::vector<uint32_t> store((size_t)(guard + H - R0) * W, 0xFF00FF00u);                       // (green sentinel rows, then the canvas rows R0..H-1)
+            uint32_t* buf = store.data() + (size_t)guard * W;
+            for (int y = R0; y < H; y++) for (int x = 0; x < W; x++) buf[(size_t)(y - R0) * W + x] = y >= 32 && y < 176 ? kSea : kLand;
+            std::vector<Widescreen::WaterObj> ex = {{100, 5, 40, true}, {300, 20, 40, true}};              // one pixel above the canvas (row 5 < 8), one on it (row 20)
+            Widescreen::WaterJob jo{buf, W, H, 0, 0, 0, 0, 32, W, 176, &m1, false, true, &ex, false, nullptr, -1, R0};
+            wt.waterTick = 100; wt.waterPass(jo);
+            auto changed = [&](int row, int x) { bool any = false; for (int dx = -2; dx <= 2; dx++) any = any || buf[(size_t)(row - R0) * W + x + dx] != kSea; return any; };
+            CHECK(!changed(74, 100));                                                                       // (the pixel in the margin: no reflection, no sentinel read)
+            CHECK(changed(59, 300));                                                                        // (the pixel on the canvas: reflected)
+            CHECK(std::all_of(store.begin(), store.begin() + (size_t)guard * W, [](uint32_t v) { return v == 0xFF00FF00u; }));   // (nothing written before the buffer either)
+        }
         {   // the thread pool: every chunk runs exactly once, on several threads, and forRange returns only when all of them are done
             std::vector<int> hit(64, 0); std::set<std::thread::id> ids; std::mutex mu;
             par::maxThreads() = 4;

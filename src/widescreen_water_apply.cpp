@@ -23,7 +23,7 @@ void Widescreen::roomWater(Canvas& c, int camX, int camY, bool objects, bool sce
     const int rx0 = fxOx - camX, ry0 = fxOy - camY + topBand + M;
     WaterJob j{nullptr, PW, PH + M, topBand + M, camX, camY, std::max(rx0, 0), std::max(ry0, topBand + M), std::min(rx0 + ROOM_W, PW), std::min(ry0 + ROOM_H, PH + M), &terrainMask, false, objects, nullptr, scenery, &terrainRaw, 0};
     if (!scenery && waterDirectObjects) {                                       // objects only (a shadow's screen): the pass works on the canvas itself, no copies
-        j.px = c.pixels.data() - (size_t)M * PW;                                // (its rows count the M margin rows above the canvas; it starts at the canvas and never reaches into them)
+        j.px = c.pixels.data(); j.rowShift = M;                                 // (the pass counts the M margin rows above the canvas; the canvas buffer does not have them: the pass skips what lies there)
         waterPass(j);
         return;
     }

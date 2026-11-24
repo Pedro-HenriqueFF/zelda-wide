@@ -459,9 +459,11 @@ void Widescreen::waterPass(const WaterJob& j) {
         if (tx < j.cx0 || tx >= j.cx1 || ty < j.cy0 || ty >= j.cy1 || ty >= h) continue;
         if (mask[(size_t)ty * w + tx] < 1 || mask[(size_t)ty * w + tx] > 2 || spriteAt(tx, ty)) continue;
         const float k = 0.5f * (1.0f - 0.5f * (float)m / 16.0f);
-        const uint32_t s = src[(size_t)o.y * w + o.x], dpx = j.px[(size_t)ty * w + tx];
+        const int srow = o.y - j.rowShift, drow = ty - j.rowShift;                                // (rows of the picture the buffer holds; a pixel in the margin above the canvas has none)
+        if (srow < 0 || drow < 0) continue;
+        const uint32_t s = src[(size_t)srow * w + o.x], dpx = j.px[(size_t)drow * w + tx];
         const int sr = (int)((s >> 16 & 255) * 0.85f), sg = (int)((s >> 8 & 255) * 0.9f), sb = (int)((s & 255) * 0.97f);
         const int r = (int)((dpx >> 16 & 255) + (sr - (int)(dpx >> 16 & 255)) * k), g = (int)((dpx >> 8 & 255) + (sg - (int)(dpx >> 8 & 255)) * k), b = (int)((dpx & 255) + (sb - (int)(dpx & 255)) * k);
-        j.px[(size_t)ty * w + tx] = (dpx & 0xFF000000u) | (uint32_t)std::clamp(r, 0, 255) << 16 | (uint32_t)std::clamp(g, 0, 255) << 8 | (uint32_t)std::clamp(b, 0, 255);
+        j.px[(size_t)drow * w + tx] = (dpx & 0xFF000000u) | (uint32_t)std::clamp(r, 0, 255) << 16 | (uint32_t)std::clamp(g, 0, 255) << 8 | (uint32_t)std::clamp(b, 0, 255);
     }
 }

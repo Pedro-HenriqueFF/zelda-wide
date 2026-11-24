@@ -95,7 +95,7 @@ public:
     static constexpr int kWaterMargin = 96;                                     // rows of terrain above the picture that the reflections can read
     void applyWater(Canvas& c, int top, int camX, int camY);                    // a picture that did not come through drawWorld
     struct WaterObj { int x, y, feet; bool flip; };                            // a sprite pixel (canvas) and its object's feet row; flip = mirrored (false for arrows, boomerangs, beams)
-    struct WaterJob { uint32_t* px; int w, h, top, camX, camY, cx0, cy0, cx1, cy1; std::vector<uint8_t>* mask; bool computeMask, objects; const std::vector<WaterObj>* extra = nullptr; bool scenery = true; const std::vector<uint32_t>* rawSrc = nullptr; int firstRow = -1; };   // firstRow: first row that is scanned (default: top); rows above top are margin above the picture
+    struct WaterJob { uint32_t* px; int w, h, top, camX, camY, cx0, cy0, cx1, cy1; std::vector<uint8_t>* mask; bool computeMask, objects; const std::vector<WaterObj>* extra = nullptr; bool scenery = true; const std::vector<uint32_t>* rawSrc = nullptr; int firstRow = -1; int rowShift = 0; };   // firstRow: first row that is scanned (default: top); rows above top are margin above the picture; rowShift: the margin rows that px does NOT hold (an objects-only job on the canvas itself: px[0] is row rowShift)
     void waterPass(const WaterJob& j);
     void buildWaterWorld();
     void ensureWaterWorld();                                                    // (builds it again when the game's screen data changed)
