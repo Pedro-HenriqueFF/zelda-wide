@@ -10,6 +10,24 @@
 #include <fstream>
 
 namespace wd {
+
+// The canvas is as wide as the window's shape asks for (an even number of pixels), within these limits.
+constexpr int kMinCanvasW = 512, kMaxCanvasW = 2048;
+inline int canvasWidth(int h, double windowAspect, int minW = kMinCanvasW) { return std::clamp((int)std::lround(h * windowAspect) & ~1, minW, kMaxCanvasW); }
+// Which object slots own sprite pixels (the water pass and the dungeon's frozen replay use the same boxes): Link always, a monster or item while its ObjType is set,
+// a weapon while its ObjState is, the room item until it is taken.
+inline bool slotActive(const uint8_t* ram, int s) {
+    const int st = ram[zelda::kObjState + s], ty = ram[zelda::kObjType + s];
+    return s == 0 ? true : s <= zelda::kLastMonsterSlot ? ty != 0 : s < zelda::kSlotRoomItem ? st != 0 : (!(st & 0x80) && ram[zelda::kRoomItemId] != zelda::kRoomItemNone);
+}
+// Shots (Link's sword shot and beam, arrows, the boomerang, the monsters' shots and magic; not the fireballs) are COPIED into a reflection, not mirrored: an arrow keeps pointing the way it flies.
+inline bool slotIsShot(const uint8_t* ram, int s) {
+    const int ty = ram[zelda::kObjType + s];
+    const bool monsterShot = ty >= zelda::kTypeFirstProjectile && ty <= zelda::kTypeLastProjectile && ty != zelda::kTypeFireballA && ty != zelda::kTypeFireballB && ty != 0x5A;   // ($5A: no object has it)
+    return s == zelda::kSlotSword || s == zelda::kSlotShot || s == zelda::kSlotBoomerang || s == zelda::kSlotLastWeapon || (s >= 1 && s <= zelda::kLastMonsterSlot && monsterShot);
+}
+constexpr int kMazeDim = 120, kMazeHaze = 70;                    // the maze's presentation (tuned by feel): the dimming (of 256) and the waving haze's strength
+constexpr int kMistLayerH = 270, kMistLayerMinW = 256, kMistLayerMaxW = 960;   // the transitions' mist: one window-shaped layer, stretched over everything by main.cpp
 bool isWaterTile(uint8_t t);                           // widescreen_water.cpp: overworld water tile (not the walkable specials)
 constexpr int ROOM_W = 256, ROOM_H = 176, HUD_H = 64, FRAME_H = 240;
 constexpr int CAVE_MISMATCH_THRESHOLD = 250;   // of 704 tiles: more than this means "not a normal overworld screen"

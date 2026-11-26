@@ -31,7 +31,7 @@ void Widescreen::render(Nes& nes, double windowAspect, Canvas& out) {
     renderCore(nes, windowAspect, out);
     if (mazeFxOk) applyMazeFx(out);
     if (enabled && mistP > 0.001f) {                                          // gray clouds over everything, the HUD included (drawn by main.cpp at window size)
-        overlay.mistH = 270; overlay.mistW = std::clamp((int)std::lround(270 * windowAspect), 256, 960);
+        overlay.mistH = wd::kMistLayerH; overlay.mistW = std::clamp((int)std::lround(wd::kMistLayerH * windowAspect), wd::kMistLayerMinW, wd::kMistLayerMaxW);
         mist.layer(overlay.mist, overlay.mistW, overlay.mistH, mistP, mistTick);
     }
 }
@@ -39,7 +39,7 @@ void Widescreen::render(Nes& nes, double windowAspect, Canvas& out) {
 // The maze's presentation: dimmed, with a waving gray haze (the mist of the transitions is a layer over the whole window, see render()).
 void Widescreen::applyMazeFx(Canvas& c) {
     if (mazePhase == 2) { mistP = 1.0f - (float)mazeT / kMazeMistOut; if (++mazeT >= kMazeMistOut) { mazePhase = 0; mazeT = 0; mistP = 0.0f; } }
-    if (mazeShown) mist.haze(c.pixels.data(), c.w, c.h, topBand, mistTick, 120, 70);
+    if (mazeShown) mist.haze(c.pixels.data(), c.w, c.h, topBand, mistTick, wd::kMazeDim, wd::kMazeHaze);
 }
 
 void Widescreen::renderCore(Nes& nes, double windowAspect, Canvas& out) {
@@ -60,15 +60,15 @@ void Widescreen::renderCore(Nes& nes, double windowAspect, Canvas& out) {
     if (view.inOverworld && view.level == 0) {                                    // the way out of a maze that only opens at the end of the sequence: solved
         if (mazeLastRoom >= 0 && view.room != mazeLastRoom &&
             ((mazeLastRoom == kForestMazeRoom && view.room == kForestMazeExit) || (mazeLastRoom == kMountainMazeRoom && view.room == kMountainMazeExit)))
-            markDiscovered(view.slot < 3 ? view.slot : 0, mazeLastRoom);
+            markDiscovered(view.slot, mazeLastRoom);
         mazeLastRoom = view.room;
     }
 
     if (lastMode == kModeFileSelect && cur.mode != kModeFileSelect) revertFog();                // a file was chosen: its fog is the saved one
     const bool saveDone = cur.mode == kModeSave && cur.sub == 2 && !(lastMode == kModeSave && lastSub == 2);
     lastMode = cur.mode; lastSub = cur.sub;
-    if (saveDone) commitFog(nes, cur.slot < 3 ? cur.slot : 0);
-    const int slot = view.slot < 3 ? view.slot : 0;
+    if (saveDone) commitFog(nes, cur.slot);
+    const int slot = view.slot;
     if (view.inOverworld) {                              // discovery is tracked even with widescreen switched off
         syncFogSlot(nes, slot);
         discoverRoom(slot, view);
@@ -251,8 +251,8 @@ void Widescreen::renderCore(Nes& nes, double windowAspect, Canvas& out) {
     const int vh = std::clamp(viewHeight, MIN_VIEW_HEIGHT, MAX_VIEW_HEIGHT);
     const int H = layout == Layout::Plain ? FRAME_H : topBand + vh;
     int W = Ppu::W;
-    if (layout != Layout::Plain) W = std::clamp((int)std::lround(H * windowAspect) & ~1, 512, 2048);
-    else if (mazeShown && view.level == 0) W = std::clamp((int)std::lround(H * windowAspect) & ~1, Ppu::W, 2048);      // (a maze: its own size, the haze reaches the bars beside it)
+    if (layout != Layout::Plain) W = wd::canvasWidth(H, windowAspect);
+    else if (mazeShown && view.level == 0) W = wd::canvasWidth(H, windowAspect, Ppu::W);      // (a maze: its own size, the haze reaches the bars beside it)
     out.w = W; out.h = H;
     { perf::Scope perfScope(perf::kPrep); out.pixels.assign((size_t)W * H, 0xFF000000); }
     const int left = (W - Ppu::W) / 2;
@@ -283,19 +283,8 @@ void Widescreen::renderCore(Nes& nes, double windowAspect, Canvas& out) {
     candleHeld = nes.ram[kSelectedItem] == kItemSlotCandle ? nes.ram[kInvCandle] : 0;
     if (kind == Kind::Overworld && view.level == 0) lastOverRoom = view.room;
     // The overworld picture is on screen (play, the walk into stairs / a cave / a dungeon, the way back out of a cave): the neighbouring screens' shadows are drawn around it.
-    const bool shadowScene = layout == Layout::World && ((kind == Kind::Overworld && view.level == 0) || (kind == Kind::Transition && (view.mode == kModeStairs || (view.mode == kModeCellar && !cellarBlackSeen && view.level == 0) || (view.mode == kModeLeaveCave && view.level == 0))));
-    if (kind == Kind::Overworld && view.mode == kModePlay && view.level == 0) { const int pl = paletteLuma(nes.ppu.palette); if (pl > 0) owRefLuma = pl; }
-    // (stairs, a cave, a cellar: the game fades its picture by palette; the shadows' monsters on it fade the same way)
-    const int shadowFade = kind == Kind::Transition && owRefLuma > 0 ? std::clamp(paletteLuma(nes.ppu.palette) * 256 / owRefLuma, 0, 256) : 256;
-    // (the stairs' RoomId is already the cellar's: while Link walks down the game's own monsters are on the picture, once it fades into the cellar the screen's shadow is)
-    // The game's own picture of the walk into a cave, stairs or a dungeon has no monsters (or they vanish with the fade): the shadow of the screen stands in from the first picture of the walk.
-    const bool takeover = shadowScene && shadows && view.mode == kModeStairs && shadows->hasVisible(shadows->baseRoom());
-    const int shadowCur = takeover ? -1 : (view.mode == kModeStairs && shadows ? shadows->baseRoom() : (view.mode == kModeCellar ? -1 : view.room));
-    // The screen's own shadow is drawn over the picture while the game's picture has no monsters: leaving a screen (mode 6), walking into a screen or out of a cave, the first pictures of play.
-    // (and in play whenever the game's own picture has no monster sprites at all: the frame in which the game changes mode, or the first ones of a screen, are drawn without them)
-    bool gameDrawsMonsters = false;
-    for (int i = 24; i < 64 && !gameDrawsMonsters; i++) { const uint8_t* o = &nes.ppu.oam[i * 4]; gameDrawsMonsters = o[0] < 0xEF && o[0] + 1 + 16 > HUD_H && !hudSpriteEntry(nes.ppu.oam, i); }   // (objects use OAM entries 24-63: SpriteOffsets, Z_01.asm 5007)
-    const bool bridgeNow = shadows && shadows->bridgeGame() && shadowScene && (view.mode == kModeEnter || view.mode == kModeLeaveCave || view.mode == kModeLeave || (view.mode == kModePlay && (shadows->bridgeShowsInPlay() || !gameDrawsMonsters)));
+    const ShadowPlan plan = planShadows(nes, view, layout, kind);
+    const bool shadowScene = plan.scene, takeover = plan.takeover, bridgeNow = plan.bridge; const int shadowCur = plan.cur, shadowFade = plan.fade;
     if (lighting && (layout != Layout::Plain || mazeShown) && (kind == Kind::Overworld || kind == Kind::OverworldOdd))   // what glows (moving things only while the game plays; statues always)
         gatherLights(nes, view, (view.room & 15) * ROOM_W, (view.room >> 4) * ROOM_H, slot, true, view.mode == kModePlay);
     else if (lighting && layout != Layout::Plain && (kind == Kind::Transition || kind == Kind::OverworldIntro || kind == Kind::Cave)) {   // (also while a dungeon is entered: the overworld is still on screen)
@@ -304,15 +293,7 @@ void Widescreen::renderCore(Nes& nes, double windowAspect, Canvas& out) {
         gatherStaticLights(nes, sr, slot, false, (sr & 15) * ROOM_W, (sr >> 4) * ROOM_H);
     }
     else lightSources.clear();
-    if (trace && shadows && shadows->enabled) {                          // --trace: what the neighbour screens are doing (printed when it changes)
-        static int lastScene = -1, lastBridge = -1, lastVisible = -1, lastMode = -1;
-        int vis = 0; for (ShadowGame* g : shadows->games()) vis += g->visible();
-        const int br = shadows->bridgeGame() ? 1 + (shadows->bridgeShowsInPlay() ? 1 : 0) : 0, sc = shadowScene ? 1 : 0;
-        if (sc != lastScene || br != lastBridge || vis != lastVisible || (int)view.mode != lastMode) {
-            std::printf("[trace] shadows: view mode=$%02X scene=%d bridge=%d visible=%d handoff=%d\n", view.mode, sc, br, vis, shadows->handOffPending() ? 1 : 0);
-            lastScene = sc; lastBridge = br; lastVisible = vis; lastMode = view.mode;
-        }
-    }
+    traceShadows(view, shadowScene);
     if (lighting && shadowScene) gatherShadowLights(shadowCur, slot, true, bridgeNow);
     const bool dungeonView = view.level != 0 && layout == Layout::Plain && (kind == Kind::Interior || kind == Kind::Transition);   // (rooms sliding, stairs, cellars, the death scene)
     if (!dungeonView) { dungeonDim = dungeonLit = 0; wasScroll = false; frozenOn = false; staleObjects = false; }
@@ -395,12 +376,7 @@ void Widescreen::renderCore(Nes& nes, double windowAspect, Canvas& out) {
     const int camX = cx - W / 2;                         // world x at canvas column 0
     const int camY = cy - vh / 2;                        // world y at canvas row topBand
     const int roomX = (view.room & 15) * ROOM_W - camX, roomY = topBand + (view.room >> 4) * ROOM_H - camY;   // the game's own room on the canvas
-    if (shadows && layout == Layout::World) {                            // the screens on the canvas get a shadow (N): more of them the more zoomed out
-        uint8_t want[128] = {};
-        const int c0 = std::max(0, camX / ROOM_W - (camX < 0 ? 1 : 0)), c1 = std::min(15, (camX + W - 1) / ROOM_W), r0 = std::max(0, camY / ROOM_H - (camY < 0 ? 1 : 0)), r1 = std::min(7, (camY + (out.h - topBand) - 1) / ROOM_H);
-        for (int r = r0; r <= r1; r++) for (int c = c0; c <= c1; c++) if (!fog || discovered(view.slot, r * 16 + c)) want[r * 16 + c] = 1;   // (a screen under the fog shows nothing living: not made)
-        shadows->setWanted(want);
-    }
+    if (layout == Layout::World) publishWantedScreens(view, camX, camY, W, out.h);
 
     // The bomb "flash": the game turns its grayscale bit on and off for a few frames. Instead of tinting the whole picture
     // (status bar included) it becomes a circle of gray around the bomb, which also reaches the neighbouring screens.
@@ -411,19 +387,7 @@ void Widescreen::renderCore(Nes& nes, double windowAspect, Canvas& out) {
         for (int bomb : {kSlotBombA, kSlotBombB})
             if (nes.ram[kObjState + bomb] == kStateBombFlash) { flash.cx = ox + nes.ram[kObjX + bomb] + 8; flash.cy = oy + nes.ram[kObjY + bomb] - HUD_H + 8; break; }
     }
-    // A bomb that goes off on a screen next to Link's flashes there too: the shadow's bomb is in its flash state and the game's grayscale bit (cleared at timer $12 and $0D, set at
-    // $16 and $11, UpdateBombFlashEffect, Z_01.asm 4086) is on while the timer is in $13-$16 and $0E-$11.
-    if (!flash.on && shadows && shadows->enabled && layout == Layout::World)
-        for (const ShadowGame* g : shadows->games()) {
-            if (!g->visible() || g->room() == view.room || (fog && !discovered(slot, g->room()))) continue;
-            const uint8_t* r = g->nes().ram;
-            for (int bomb : {kSlotBombA, kSlotBombB}) {
-                const int tm = r[kObjTimer + bomb];
-                if (r[kObjState + bomb] != kStateBombFlash || !((tm >= 0x13 && tm <= 0x16) || (tm >= 0x0E && tm <= 0x11))) continue;
-                flash.on = true; flash.cx = (g->room() & 15) * ROOM_W + r[kObjX + bomb] + 8; flash.cy = (g->room() >> 4) * ROOM_H + r[kObjY + bomb] - HUD_H + 8;
-            }
-            if (flash.on) break;
-        }
+    if (layout == Layout::World) shadowBombFlash(flash, view, slot);
     // The picture that stays behind a cave's box: the last bright, steady overworld frame, *without* anything that moves
     // (Link, enemies, their projectiles, effects). So it is the scenery as drawn by drawWorld plus the game's room with only
     // its background layer; no flash frames (they would leave a gray circle in it).
@@ -460,7 +424,7 @@ void Widescreen::renderCore(Nes& nes, double windowAspect, Canvas& out) {
         // The game's own picture of the current screen (with Link, enemies, effects) goes on top, untouched.
         perf::Scope perfRoom(perf::kRoom);                       // (the game's own picture: sprites, effects, the water of Link and the monsters)
         planSpriteFixes(nes, view, hideLinkSprites);
-        if (takeover) for (int i = 0; i < 64; i++) if (i != kLinkOam0 && i != kLinkOam1 && !hudSpriteEntry(nes.ppu.oam, i)) hideSprite[i] = true;   // (the shadow's monsters are drawn: not these twice)
+        if (takeover) for (int i = 0; i < kOamEntries; i++) if (i != kLinkOam0 && i != kLinkOam1 && !hudSpriteEntry(nes.ppu.oam, i)) hideSprite[i] = true;   // (the shadow's monsters are drawn: not these twice)
         blitRoomId = view.room;
         blitSecrets = kind == Kind::Overworld && view.level == 0 ? roomSecrets(nes, view.room) : nullptr;
         blitRoom(nes, out, roomX, roomY, topBand, flash, ox, oy);

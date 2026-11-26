@@ -53,7 +53,7 @@ size_t Cart::prgOffset(uint16_t addr) const {
     size_t bank;
     if (mode <= 1) {                                    // 32KB switching
         size_t b32 = (prgBank & 0x0E) % numBanks;
-        return b32 * 16384 + (addr - 0x8000);
+        return (b32 * 16384 + (addr - 0x8000)) % prg.size();         // (a ROM whose PRG is not a multiple of 32 KB wraps instead of reading past its end)
     } else if (mode == 2) {                             // first bank fixed at $8000
         bank = (addr < 0xC000) ? 0 : (prgBank & 0x0F) % numBanks;
     } else {                                            // last bank fixed at $C000

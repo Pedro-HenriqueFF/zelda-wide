@@ -44,7 +44,7 @@ void Widescreen::planSpriteFixes(Nes& nes, const ViewSnapshot& view, bool hideLi
         for (int g = 0; g < 2; g++) {
             const FireTrack& f = fireTrack[s];
             if (!f.act[g] || (f.overX[g] == 0 && f.overY[g] == 0 && f.drawY[g] < 0xE0)) continue;   // (the PPU hides what is drawn at Y >= $EF)
-            for (int i = 0; i < 64; i++) {
+            for (int i = 0; i < kOamEntries; i++) {
                 if (fireOwned[i] || i == kLinkOam0 || i == kLinkOam1) continue;
                 const int sx = oam[i * 4 + 3], sy = (oam[i * 4] + 1) & 255;
                 const int dx = wrapTo256(sx - f.drawX[g]), dy = wrapTo256(sy - f.drawY[g] - 1);
@@ -53,7 +53,7 @@ void Widescreen::planSpriteFixes(Nes& nes, const ViewSnapshot& view, bool hideLi
                 trueSprites[trueSpriteCount++] = {i, sx + f.overX[g], sy + f.overY[g]};
             }
         }
-    for (int i = 0; i < 64; i++) {
+    for (int i = 0; i < kOamEntries; i++) {
         if (fireOwned[i]) continue;
         if (oam[i * 4] >= 0xEF || hudSpriteEntry(oam, i)) continue;               // parked off screen / part of the status bar
         const int sy = oam[i * 4] + 1, sx = oam[i * 4 + 3];
@@ -152,7 +152,7 @@ void Widescreen::drawSplashes(Nes& nes, Canvas& out, int roomX, int roomY, int m
     // bottom wrap in Y, so near the borders the splash is cut off. Here all four corners are drawn at their real places:
     // the centre is the shot object's position; the distance d and the palette come from any corner the game did draw.
     if (!(nes.ppu.lineCtrl[100] & 0x20)) return;                                  // (Zelda uses 8x16 sprites)
-    int centres[26][2], n = 0;
+    int centres[2 * kSlotShot][2], n = 0;
     for (int g = 0; g < 2; g++)                                                     // now and one frame ago (the picture's frame)
         for (int slot = 1; slot <= kSlotShot; slot++) {
             const ObjSnap& s = objSnap[g];
@@ -163,7 +163,7 @@ void Widescreen::drawSplashes(Nes& nes, Canvas& out, int roomX, int roomY, int m
     for (int c = 0; c < n; c++) {
         const int cx = centres[c][0], cy = centres[c][1];
         int d = 0, pal = 0;
-        for (int i = 0; i < 64 && !d; i++) {
+        for (int i = 0; i < kOamEntries && !d; i++) {
             if (oam[i * 4] >= 0xEF || oam[i * 4 + 1] != 0x30) continue;
             const int dx = (int8_t)(uint8_t)(oam[i * 4 + 3] - 4 - cx), dy = (int8_t)(uint8_t)(oam[i * 4] - cy);
             const int ad = std::abs(dy);
@@ -186,7 +186,7 @@ void Widescreen::drawSplashes(Nes& nes, Canvas& out, int roomX, int roomY, int m
 void Widescreen::drawLinkSprites(Nes& nes, Canvas& out, const ViewSnapshot& v, int camX, int camY, int originX, int originY) {
     // Draws the sprites around Link (Link himself and anything attached to him) at an offset position.
     const FlashEffect noFlash;
-    for (int i = 0; i < 64; i++) {
+    for (int i = 0; i < kOamEntries; i++) {
         const uint8_t* o = &nes.ppu.oam[i * 4];
         if (o[0] >= 0xEF) continue;                                  // parked off screen
         const int sy = o[0] + 1, sx = o[3];

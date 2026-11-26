@@ -31,6 +31,8 @@ constexpr uint16_t kActiveMonsterShots = 0x34C;      // ActiveMonsterShots (Vari
 constexpr uint16_t kWorldIsFillingHearts = 0x63;     // World_IsFillingHearts (Variables.inc 37): the Great Fairy's heart animation, Link halted
 constexpr uint16_t kRandom = 0x18;                   // Random: the 13-byte shift register the NMI handler scrambles every frame (Z_07.asm 511-531, Variables.inc 8)
 constexpr int kRandomLen = 13;
+constexpr uint16_t kLeaveRoomScratch = 0x0F;               // the zero-page temporary GoToNextModeFromPlay clears with Link's state (Z_07.asm 3036-3046)
+constexpr int kLastMonsterSlot = 12;                      // object slots 1-12 hold the room's monsters, items and shots (ObjType exists for them; slots $10+ alias RoomObjTemplateType)
 constexpr uint16_t kObjShoveDir = 0xC0, kObjShoveDistance = 0xD3, kObjGridOffset = 0x394, kObjInvincibilityTimer = 0x4F0;   // (Variables.inc 54, 55, 103, 147)
 // Link's coordinates at the screen edge in each direction (PlayerScreenEdgeBounds, Z_07.asm 2831: up $3D, down $DD, left $00, right $F0).
 constexpr uint8_t kEdgeUp = 0x3D, kEdgeDown = 0xDD, kEdgeLeft = 0x00, kEdgeRight = 0xF0, kCenterX = 0x78, kCenterY = 0x8D;
@@ -45,6 +47,7 @@ inline bool isMazeRoom(int room) { return room == kForestMazeRoom || room == kMo
 // 8 continue/save/retry, 9 cellar, $A leave cave/cellar, $B cave, $C shortcut, $D save, $10 stairs, $11 death, $12 end level.
 constexpr uint8_t kModeTitle = 0, kModeFileSelect = 1, kModeLoad = 2, kModeUnfurl = 3, kModeEnter = 4, kModePlay = 5, kModeLeave = 6, kModeScroll = 7, kModeContinue = 8, kModeCellar = 9,
                   kModeLeaveCave = 0x0A, kModeCave = 0x0B, kModeShortcut = 0x0C, kModeStairs = 0x10, kModeDeath = 0x11, kModeEndLevel = 0x12;
+constexpr int kOamEntries = 64, kFirstObjectOam = 24;       // the PPU's 64 sprites; objects (monsters, items, weapons) use entries 24-63 (SpriteOffsets, Z_01.asm 5007)
 constexpr int kLinkOam0 = 18, kLinkOam1 = 19;          // Link is drawn by two 8x16 sprites: OAM entries 18 and 19
 // The armos that hides a secret (Z_04.asm SecretArmosRoomIds / SecretArmosXs): the one in that room at this X and Y = $80.
 constexpr uint8_t kSecretArmosRoom[7] = {0x24, 0x0B, 0x1C, 0x22, 0x34, 0x3D, 0x4E}, kSecretArmosX[7] = {0xE0, 0xB0, 0xB0, 0x30, 0x40, 0x90, 0xA0}, kSecretArmosY = 0x80;
@@ -62,7 +65,7 @@ constexpr uint16_t kQuestNumbers = 0x62D;   // QuestNumbers: one byte per save s
 constexpr uint16_t kNames = 0x638, kWorldFlags = 0x67F;
 constexpr uint16_t kPlayAreaTiles = 0x6530;
 constexpr int kPlayCols = 32, kPlayRows = 22;            // PlayAreaTiles is column-major: tile (col, row) at kPlayAreaTiles + col * kPlayRows + row
-constexpr uint16_t kDynTileBufLen = 0x301, kDynTileBuf = 0x302;   // the PPU transfer buffer the NMI handler empties every frame (Variables.inc 83-84)
+constexpr uint16_t kDynTileBufLen = 0x301, kDynTileBuf = 0x302, kDynTileBufSize = 0x33F - 0x302;   // the PPU transfer buffer the NMI handler empties every frame: $302-$33E, OpenDoorwayMask follows at $33F (Variables.inc 83-90)
 constexpr uint8_t kArmosTile = 0xC0;                     // an armos statue = the 2x2 tiles $C0 $C1 / $C2 $C3 (primary square $C0)
 constexpr int kHudRows = 8;                              // the status bar's tile rows above the play area
 constexpr uint16_t kLevelWorldFlagsAddr = 0x6BAF;     // LevelInfo_WorldFlagsAddr (Variables.inc): pointer to the level's room-flag table (2 bytes)

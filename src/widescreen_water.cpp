@@ -11,6 +11,7 @@
 #include "perf.h"
 #include "zelda_ram.h"
 #include <algorithm>
+#include <array>
 #include <climits>
 #include <cmath>
 #include <unordered_set>
@@ -30,8 +31,7 @@ constexpr int R = OverworldMap::TILE_ROWS;
 constexpr float kReflectMax = 0.42f;                  // share of the scenery's reflection right under the shore
 constexpr int kReflectLen = 40;                       // px (2.5 squares) that the reflection of a wall reaches below the shore at most
 float fsin(float x) {                                   // a table sine (4096 steps): the waves need three per water pixel
-    static float table[4096]; static bool ready = false;
-    if (!ready) { for (int i = 0; i < 4096; i++) table[i] = std::sin(i * (6.2831853f / 4096.0f)); ready = true; }
+    static const std::array<float, 4096> table = [] { std::array<float, 4096> t{}; for (int i = 0; i < 4096; i++) t[i] = std::sin(i * (6.2831853f / 4096.0f)); return t; }();   // (built once, thread-safe)
     return table[(int)(x * (4096.0f / 6.2831853f) + 1048576.0f) & 4095];   // (+2^20 keeps the index positive for the small negative phases)
 }
 
@@ -260,11 +260,10 @@ void Widescreen::waterPass(const WaterJob& j) {
                 if (cx >= 0 && cx < w && cy >= y0 && cy < h) linkMark[(size_t)cy * w + cx] = 1;
             }
         }
-        for (int s = 0; s <= 0x13; s++) {
-            const int st = fxNes->ram[kObjState + s], ty = fxNes->ram[kObjType + s];
-            bool active = s == 0 ? true : s <= 12 ? ty != 0 : s < 0x13 ? st != 0 : (!(st & 0x80) && fxNes->ram[kRoomItemId] != 0x3F);
-            if (!active || (linkStairs && (s == 0 || s == kSlotSword))) continue;
-            if (fxIsShadow && (s == 0 || (s >= kSlotSword && s < 0x13))) continue;                  // (a shadow's Link and weapons are not on its picture)
+        for (int s = 0; s <= kSlotRoomItem; s++) {
+            const int ty = fxNes->ram[kObjType + s];
+            if (!slotActive(fxNes->ram, s) || (linkStairs && (s == 0 || s == kSlotSword))) continue;
+            if (fxIsShadow && (s == 0 || (s >= kSlotSword && s < kSlotRoomItem))) continue;                  // (a shadow's Link and weapons are not on its picture)
             const int ox = fxNes->ram[kObjX + s], oy = fxNes->ram[kObjY + s];
             const int feetNes = feetOf(s == kSlotSword ? fxNes->ram[kObjY] : oy);
             const int m = s >= kSlotSword ? 12 : 2;
@@ -278,10 +277,10 @@ void Widescreen::waterPass(const WaterJob& j) {
                     const int cx = rx0 + px, cy = ry0 + (py - HUD_H);
                     if (cx < 0 || cx >= w || cy < y0 || cy >= h) continue;
                     if (j.scenery) objSkip[(size_t)cy * w + cx] = 1;
-                    const bool shot = s == kSlotSword || s == 0x0E || s == 0x0F || s == 0x12 || (s >= 1 && s <= 12 && (ty == 0x53 || ty == 0x54 || ty == 0x57 || ty == 0x58 || ty == 0x59 || ty == 0x5B || ty == 0x5C));
+                    const bool shot = slotIsShot(fxNes->ram, s);
                     mine.push_back({cx, cy, ry0 + (feetNes - HUD_H), !shot});     // (shots are copied, not mirrored: an arrow keeps pointing the way it flies)
                 }
-            if (maxPy >= 0 && ((s >= 1 && s <= 12 && ty == kTypeItem) || s == 0x13)) {                   // an item (a dropped heart fills only the top half of its 16 rows) stands on its lowest row
+            if (maxPy >= 0 && ((s >= 1 && s <= 12 && ty == kTypeItem) || s == kSlotRoomItem)) {                   // an item (a dropped heart fills only the top half of its 16 rows) stands on its lowest row
                 const int f = ry0 + (maxPy + 1 - HUD_H);
                 for (WaterObj& o : mine) o.feet = f;
             }

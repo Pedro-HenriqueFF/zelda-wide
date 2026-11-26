@@ -26,13 +26,11 @@ void Widescreen::recordDungeonFrozen(Nes& nes, const Canvas& c, int top, bool ce
     }
     const Ppu& ppu = nes.ppu;
     std::vector<int16_t> feetRow((size_t)Ppu::SPR_W * Ppu::SPR_H, -1000); std::vector<uint8_t> isShot((size_t)Ppu::SPR_W * Ppu::SPR_H, 0);
-    for (int s = 1; s <= 0x13; s++) {                                     // which object owns which sprite pixel (the same boxes as the water pass)
-        const int st = nes.ram[kObjState + s], ty = nes.ram[kObjType + s];
-        const bool active = s <= 12 ? ty != 0 : s < 0x13 ? st != 0 : (!(st & 0x80) && nes.ram[kRoomItemId] != 0x3F);
-        if (!active) continue;
+    for (int s = 1; s <= kSlotRoomItem; s++) {                                     // which object owns which sprite pixel (the same boxes as the water pass)
+        if (!slotActive(nes.ram, s)) continue;
         const int ox = nes.ram[kObjX + s], oy = nes.ram[kObjY + s], m = s >= kSlotSword ? 12 : 2;
         const int feet = (s == kSlotSword ? nes.ram[kObjY] : oy) + 17 - HUD_H;
-        const bool shot = s == kSlotSword || s == 0x0E || s == 0x0F || s == 0x12 || (s >= 1 && s <= 12 && (ty == 0x53 || ty == 0x54 || ty == 0x57 || ty == 0x58 || ty == 0x59 || ty == 0x5B || ty == 0x5C));
+        const bool shot = slotIsShot(nes.ram, s);
         for (int py = std::max(HUD_H, oy - m); py < std::min(Ppu::SPR_H, oy + 17 + m); py++)
             for (int px = std::max(0, ox - m); px < std::min(256, ox + 16 + m); px++) {
                 const size_t id = (size_t)py * Ppu::SPR_W + px;

@@ -78,18 +78,53 @@ void drawTorch(Canvas& c, int cx, int cy, int corner, float lit, float shade, un
 }
 }  // namespace
 
+// The glow and glitter of a loot item by its item id (a fairy, a triforce shard, a heart container, a heart, rupees) at light-space (x, y); false = nothing special about that id.
+bool Widescreen::lootGlow(int id, float x, float y, bool sparkle) {
+    auto add = [&](float rad, float pw, int r, int g, int b, int kind) { lightSources.push_back({x, y, rad, pw, 0.0f, (uint8_t)r, (uint8_t)g, (uint8_t)b}); if (sparkle) spawnSparkles(x, y, kind); };
+    if (id == kItemFairy) add(40, 0.5f, 255, 190, 230, 0);                  // a fairy dropped by a monster
+    else if (id == kItemTriforce) add(44, 0.6f, 255, 215, 90, 2);           // a shard of the triforce: gold glitter
+    else if (id == kItemHeartContainer) add(32, 0.4f, 255, 90, 100, 3);
+    else if (id == kItemHeart) add(20, 0.28f, 255, 90, 100, 3);             // a heart: red glitter
+    else if (id == kItemRupee) add(20, 0.28f, 255, 190, 60, 4);             // a rupee: amber
+    else if (id == kItemRupee5) add(20, 0.28f, 90, 150, 255, 5);            // five rupees: blue
+    else return false;
+    return true;
+}
+
 // The glow and glitter of an item lying on the ground (id `st` = ObjState of its slot `s`) at light-space (x, y); `sparkle` = glitter too.
 void Widescreen::itemGlow(int st, float x, float y, int s, bool sparkle) {
+    if (lootGlow(st, x, y, sparkle) || !st) return;
+    lightSources.push_back({x, y, 22, 0.55f * (0.8f + 0.2f * std::sin(dayClock.tick * 0.15f + s)), 0.0f, 255, 235, 170});       // a sparkle on dropped items
+}
+
+// An armos glows blue (a faint halo even in daylight); the secret one, still in its place, red. `phase` keeps the pulses apart.
+void Widescreen::addArmosLight(float x, float y, bool secret, float phase) {
+    const float pulse = 0.85f + 0.15f * std::sin(dayClock.tick * 0.08f + phase);
+    lightSources.push_back(secret ? lighting::Source{x, y, 34, 0.9f * pulse, 0.5f, 255, 60, 40} : lighting::Source{x, y, 32, 0.8f * pulse, 0.45f, 70, 130, 255});
+}
+
+// What Link has out: the sword shot's (or magic's) light, the boomerang's and arrows' trail of white sparkles, a bomb's flash and fire (the candle's, a burning tree's). The real screen and
+// the shadows of the neighbours use the same numbers; `tracked` = the real game's fire follows `fireTrack` (it keeps the game's 8-bit coordinates inside the screen).
+void Widescreen::gatherWeaponLights(const uint8_t* ram, int ox, int oy, bool sparkle, bool tracked) {
     const unsigned t = dayClock.tick;
-    auto add = [&](float px, float py, float rad, float pw, int r, int g, int b) { lightSources.push_back({px, py, rad, pw, 0.0f, (uint8_t)r, (uint8_t)g, (uint8_t)b}); };
-    auto glitter = [&](int kind) { if (sparkle) spawnSparkles(x, y, kind); };
-    if (st == kItemFairy) { add(x, y, 40, 0.5f, 255, 190, 230); glitter(0); }                          // a fairy dropped by a monster
-    else if (st == kItemTriforce) { add(x, y, 44, 0.6f, 255, 215, 90); glitter(2); }                    // a shard of the triforce: gold glitter
-    else if (st == kItemHeartContainer) { add(x, y, 32, 0.4f, 255, 90, 100); glitter(3); }
-    else if (st == kItemHeart) { add(x, y, 20, 0.28f, 255, 90, 100); glitter(3); }                      // a heart: red glitter
-    else if (st == kItemRupee) { add(x, y, 20, 0.28f, 255, 190, 60); glitter(4); }                      // a rupee: amber
-    else if (st == kItemRupee5) { add(x, y, 20, 0.28f, 90, 150, 255); glitter(5); }                     // five rupees: blue
-    else if (st) add(x, y, 22, 0.55f * (0.8f + 0.2f * std::sin(t * 0.15f + s)), 255, 235, 170);       // a sparkle on dropped items
+    auto at = [&](int s, float& x, float& y) { x = (float)(ox + ram[kObjX + s] + 8); y = (float)(oy + ram[kObjY + s] - HUD_H + 8); };
+    auto add = [&](float x, float y, float rad, float pw, int r, int g, int b) { lightSources.push_back({x, y, rad, pw, 0.0f, (uint8_t)r, (uint8_t)g, (uint8_t)b}); };
+    float x, y;
+    if (ram[kObjState + kSlotShot] >= 0x10) { at(kSlotShot, x, y); add(x, y, 52, 0.95f, 190, 225, 255); }          // sword shot, its splash, magic
+    for (int sl : {kSlotBoomerang, (int)kSlotLastWeapon})                                                       // the boomerang and arrows leave a trail of white sparkles
+        if (ram[kObjState + sl]) {
+            at(sl, x, y);
+            if (sl != kSlotBoomerang) { const int d = ram[kObjDir + sl]; x += d == 1 ? 4.0f : d == 2 ? -4.0f : 0.0f; y += d == 4 ? 4.0f : d == 8 ? -4.0f : 0.0f; if (d == 1 || d == 2) y += 4.0f; }   // an arrow's trail starts at its head
+            if (sparkle) spawnSparkles(x, y, 1);
+        }
+    for (int s = 0; s < 2; s++) {
+        const int sl = kSlotBombA + s, st = ram[kObjState + sl];
+        if ((st & 0xF0) == 0x20) {                                                                              // fire (candle, burning tree...)
+            if (tracked && fireTrack[s].on) { x = (float)(ox + fireTrack[s].tx + 8); y = (float)(oy + fireTrack[s].ty - HUD_H + 8); }
+            else at(sl, x, y);
+            add(x, y, 64, 1.0f * lighting::flicker(t, sl), 255, 150, 60);
+        } else if (st == kStateBombFlash) { at(sl, x, y); add(x, y, 120, 1.4f, 255, 225, 150); }               // the bomb's flash
+    }
 }
 
 void Widescreen::gatherLights(Nes& nes, const ViewSnapshot& v, int ox, int oy, int slot, bool overworld, bool objects) {
@@ -104,21 +139,7 @@ void Widescreen::gatherLights(Nes& nes, const ViewSnapshot& v, int ox, int oy, i
     if (objects) sparkSpots.clear();
     candleIdx = -1;
     if (objects) {
-    if (nes.ram[kObjState + kSlotShot] >= 0x10) { at(kSlotShot, x, y); add(x, y, 52, 0.95f, 190, 225, 255); }          // sword shot, its splash, magic
-    for (int sl : {0x0F, (int)kSlotLastWeapon})                                                                 // the boomerang and arrows leave a trail of white sparkles
-        if (nes.ram[kObjState + sl]) {
-            at(sl, x, y);
-            if (sl != 0x0F) { const int d = nes.ram[kObjDir + sl]; x += d == 1 ? 4.0f : d == 2 ? -4.0f : 0.0f; y += d == 4 ? 4.0f : d == 8 ? -4.0f : 0.0f; if (d == 1 || d == 2) y += 4.0f; }   // an arrow's trail starts at its head
-            spawnSparkles(x, y, 1);
-        }
-    for (int s = 0; s < 2; s++) {
-        const int sl = kSlotBombA + s, st = nes.ram[kObjState + sl];
-        if ((st & 0xF0) == 0x20) {                                                                              // fire (candle, burning tree...)
-            if (fireTrack[s].on) { x = (float)(ox + fireTrack[s].tx + 8); y = (float)(oy + fireTrack[s].ty - HUD_H + 8); }
-            else at(sl, x, y);
-            add(x, y, 64, 1.0f * lighting::flicker(t, sl), 255, 150, 60);
-        } else if (st == kStateBombFlash) { at(sl, x, y); add(x, y, 120, 1.4f, 255, 225, 150); }               // the bomb's flash
-    }
+    gatherWeaponLights(nes.ram, ox, oy, true, true);                                                      // (the shot, the boomerang's and arrows' trail, fire and bombs)
     for (int s = 1; s <= 12; s++) {
         const int st = nes.ram[kObjState + s], ty = nes.ram[kObjType + s];
         at(s, x, y);
@@ -131,9 +152,7 @@ void Widescreen::gatherLights(Nes& nes, const ViewSnapshot& v, int ox, int oy, i
             for (int k = 0; k < 7 && sec; k++)
                 if (kSecretArmosRoom[k] == v.room && nes.ram[kObjX + s] == kSecretArmosX[k] && nes.ram[kObjY + s] == kSecretArmosY &&
                     sec[(kSecretArmosX[k] >> 3) * OverworldMap::TILE_ROWS + ((kSecretArmosY - HUD_H) >> 3)] == SecretArmos) secret = true;
-            const float pulse = 0.85f + 0.15f * std::sin(t * 0.08f + s);
-            lighting::Source src = secret ? lighting::Source{x, y, 34, 0.9f * pulse, 0.5f, 255, 60, 40} : lighting::Source{x, y, 32, 0.8f * pulse, 0.45f, 70, 130, 255};
-            lightSources.push_back(src);                                                                     // (a faint halo even in daylight)
+            addArmosLight(x, y, secret, (float)s);
         }
         if (!st) continue;
         if (ty == kTypeFireballA || ty == kTypeFireballB) add(x, y, 44, 0.95f * lighting::flicker(t, s), 255, 140, 50);   // Zora and other fireballs
@@ -144,12 +163,9 @@ void Widescreen::gatherLights(Nes& nes, const ViewSnapshot& v, int ox, int oy, i
     // A room item lies in slot $13 until it is taken (ObjState $FF); then Link lifts it for $80 frames: the game puts it 16 px above him in
     // slot $13 again (ItemTypeToLift != 0) and the room item's own flag is already set.
     const int lifted = nes.ram[kItemTypeToLift];
-    const bool roomItemShown = !(nes.ram[kObjState + 0x13] & 0x80) && (!roomItemTaken(nes) || v.mode == kModeEndLevel);
+    const bool roomItemShown = !(nes.ram[kObjState + kSlotRoomItem] & 0x80) && (!roomItemTaken(nes) || v.mode == kModeEndLevel);
     const int shownId = scrollNow ? -1 : lifted ? lifted : roomItemShown ? nes.ram[kRoomItemId] : -1;
-    if (shownId == kItemHeartContainer) { at(0x13, x, y); add(x, y, 32, 0.4f, 255, 90, 100); spawnSparkles(x, y, 3); }   // a heart container
-    if (shownId == kItemTriforce) {                                       // a shard of the triforce (lying in the room or lifted by Link): gold glitter
-        at(0x13, x, y); add(x, y, 44, 0.6f, 255, 215, 90); spawnSparkles(x, y, 2);
-    }
+    if (shownId == kItemHeartContainer || shownId == kItemTriforce) { at(kSlotRoomItem, x, y); lootGlow(shownId, x, y, true); }   // a heart container, a shard of the triforce (lying in the room or lifted by Link)
     if (!overworld && nes.ram[kSelectedItem] == kItemSlotCandle && nes.ram[kInvCandle]) {                                   // Link carries the candle he holds: blue = a cold light, red = warm
         at(0, x, y); candleIdx = (int)lightSources.size();
         if (nes.ram[kInvCandle] == 1) add(x, y, 44, 0.6f * lighting::flicker(t, 9), 110, 170, 255);
@@ -193,14 +209,11 @@ void Widescreen::gatherStaticLights(Nes& nes, int room, int slot, bool live, int
 }
 
 void Widescreen::gatherArmosTiles(const uint8_t* tiles, int room, float ox, float oy, const Cached* known) {
-    const unsigned t = dayClock.tick;
     auto one = [&](int col, int row) {
-        if (tiles[col * OverworldMap::TILE_ROWS + row] != 0xC0 || tiles[(col + 1) * OverworldMap::TILE_ROWS + row] != 0xC2) return;   // the top-left of an armos' 2x2 (one that woke is gone)
+        if (tiles[col * OverworldMap::TILE_ROWS + row] != kArmosTile || tiles[(col + 1) * OverworldMap::TILE_ROWS + row] != kArmosTile + 2) return;   // the top-left of an armos' 2x2 (one that woke is gone)
         bool secret = false;
         for (int k = 0; k < 7; k++) secret = secret || (kSecretArmosRoom[k] == room && kSecretArmosX[k] == col * 8 && kSecretArmosY == row * 8 + HUD_H);
-        const float pulse = 0.85f + 0.15f * std::sin(t * 0.08f + col);
-        const float x = ox + col * 8 + 8, y = oy + row * 8 + 8;
-        lightSources.push_back(secret ? lighting::Source{x, y, 34, 0.9f * pulse, 0.5f, 255, 60, 40} : lighting::Source{x, y, 32, 0.8f * pulse, 0.45f, 70, 130, 255});
+        addArmosLight(ox + col * 8 + 8, oy + row * 8 + 8, secret, (float)col);
     };
     if (known) {                                                              // (the squares in the order a scan finds them: by column, then row)
         std::vector<uint16_t> sq(known->statue, known->statue + known->nStatue);
@@ -384,10 +397,7 @@ void Widescreen::gatherWareLights(Nes& nes, int ox, int oy, bool cave) {
     for (int i = 0; i < 3; i++) {
         const int id = nes.ram[kCaveItemIds + i] & 0x3F;                  // (the same glow and glitter as the item lying in the open; the price rupee beside the wares is no ware)
         const float x = (float)(ox + kWareX[i] + 8), y = (float)(oy + 0x98 - HUD_H + 8);
-        if (id == kItemHeartContainer) { lightSources.push_back({x, y, 32, 0.4f, 0.0f, 255, 90, 100}); spawnSparkles(x, y, 3); }
-        else if (id == kItemHeart)     { lightSources.push_back({x, y, 20, 0.28f, 0.0f, 255, 90, 100}); spawnSparkles(x, y, 3); }
-        else if (id == kItemRupee)     { lightSources.push_back({x, y, 20, 0.28f, 0.0f, 255, 190, 60}); spawnSparkles(x, y, 4); }
-        else if (id == kItemRupee5)    { lightSources.push_back({x, y, 20, 0.28f, 0.0f, 90, 150, 255}); spawnSparkles(x, y, 5); }
+        if (id != kItemFairy && id != kItemTriforce) lootGlow(id, x, y, true);   // (a ware is a heart container, a heart or rupees: not those two)
     }
 }
 
@@ -412,7 +422,7 @@ void Widescreen::trackFire(Nes& nes) {
     for (int s = 0; s < 2; s++) {
         FireTrack& f = fireTrack[s];
         const int slot = kSlotBombA + s;
-        for (int g = 1; g > 0; g--) { f.drawX[g] = f.drawX[g - 1]; f.drawY[g] = f.drawY[g - 1]; f.overX[g] = f.overX[g - 1]; f.overY[g] = f.overY[g - 1]; f.act[g] = f.act[g - 1]; }
+        f.drawX[1] = f.drawX[0]; f.drawY[1] = f.drawY[0]; f.overX[1] = f.overX[0]; f.overY[1] = f.overY[0]; f.act[1] = f.act[0];      // (the previous frame's picture: the sprites are drawn one frame late)
         const int st = nes.ram[kObjState + slot];
         if ((st & 0xF0) != 0x20) { f.on = false; f.act[0] = false; continue; }
         const int gx = nes.ram[kObjX + slot], gy = nes.ram[kObjY + slot];

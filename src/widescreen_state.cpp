@@ -68,7 +68,7 @@ ViewSnapshot Widescreen::capture(Nes& nes) {
     ViewSnapshot s;
     s.mode = nes.ram[kGameMode];  s.sub = nes.ram[kGameSubmode];
     s.level = nes.ram[kCurLevel]; s.room = nes.ram[kRoomId] & 0x7F;
-    s.linkX = nes.ram[kObjX];     s.linkY = nes.ram[kObjY];     s.slot = nes.ram[kCurSaveSlot];
+    s.linkX = nes.ram[kObjX];     s.linkY = nes.ram[kObjY];     s.slot = nes.ram[kCurSaveSlot] < 3 ? nes.ram[kCurSaveSlot] : 0;   // (the file select's cursor can be beyond the three files: every index below is safe)
     s.updating = nes.ram[kIsUpdatingMode];
     s.exitType = nes.ram[kUndergroundExitType];
     s.menu = nes.ram[kMenuState] != 0;

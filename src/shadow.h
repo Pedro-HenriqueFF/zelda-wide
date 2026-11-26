@@ -66,11 +66,13 @@ private:
     State st = State::Idle;
     int target = -1, hopIdx = 0, hopCount = 0, hopFrames = 0, settle = 0, frameCount = 0;
     bool hopIssued = false;
-    int dxs = 0, dys = 0, attempts = 0, failedFrames = 0;
+    int attempts = 0, failedFrames = 0;
     bool aimOn = false; uint8_t aimX = 0, aimY = 0;
     uint8_t hopDir[2] = {0, 0}, hopRoom[2] = {0, 0};
     uint8_t hearts = 0, heartPart = 0;
     void issueHop();
+    void reseed(uint32_t seed);                    // the dice and the stand-in Link's own random numbers: not the real game's
+    void clearLeaveState();                        // what GoToNextModeFromPlay clears besides the mode
     void placeLinkNeutral();
     void containScenery();                        // undoes a raft ride / Great Fairy heart animation the stand-in Link has set off
     void wanderLink();
@@ -136,4 +138,5 @@ private:
     void retire(int room);
     void stepAll();
     ShadowGame* alloc();
+    void pruneIdle();                              // drops the shadows that went Idle from `active`
 };

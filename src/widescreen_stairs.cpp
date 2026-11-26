@@ -17,7 +17,7 @@ bool Widescreen::stairsExitSpot(const Nes& nes, int room, int& x, int& y) const 
 }
 
 void Widescreen::stairsPrepare(Nes& nes) {
-    const int mode = nes.ram[kGameMode], room = nes.ram[kRoomId];
+    const int mode = nes.ram[kGameMode], room = nes.ram[kRoomId] & 0x7F;
     int x, y;
     if (mode == kModeEnter && nes.ram[kUndergroundExitType] != 0 && !stairAttrsOn && stairsExitSpot(nes, room, x, y)) {
         // The game reads its exit spot from the screen's attributes while it lays Link out: lend it ours for this frame.
@@ -43,7 +43,7 @@ void Widescreen::stairsAfter(Nes& nes) {
     if (stairPrevMode == kModePlay && stairPrevLevel == 0 && mode == kModeStairs) {      // Link went down some stairs or into a cave: remember the square
         const int x = nes.ram[kObjX], y = nes.ram[kObjY];
         stairValid = (x & 7) == 0 && (y & 0x0F) == 0x0D;             // (CheckWarps only fires on such a position, Z_05.asm 7250)
-        stairRoom = nes.ram[kRoomId]; stairX = x; stairY = y;
+        stairRoom = nes.ram[kRoomId] & 0x7F; stairX = x; stairY = y;
     }
     stairPrevMode = mode; stairPrevLevel = level;
 }

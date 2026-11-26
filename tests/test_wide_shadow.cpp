@@ -221,6 +221,15 @@ void section32(Ctx& t) {
         m.fog = true; frames(m, 2, aspect); CHECK(wanted(set) < far);                                         // the fog hides the undiscovered ones
         m.fog = saveFog; m.viewHeight = saveH; m.shadows = nullptr; frames(m, 2, aspect);
     }
+    {   // a save slot beyond the three files (the file select's cursor) is slot 0 everywhere: the fog bits are never indexed past their end
+        auto wanted = [&](const ShadowSet& st) { int n = 0; for (int r = 0; r < 128; r++) n += st.wanted[r]; return n; };
+        const int saveH = m.viewHeight; const bool saveFog = m.fog; const uint8_t saveSlot = nes->ram[kCurSaveSlot];
+        m.fog = true; m.shadows = &set; set.enabled = true; m.viewHeight = 704;
+        nes->ram[kCurSaveSlot] = 0; frames(m, 2, aspect); const int w0 = wanted(set);
+        nes->ram[kCurSaveSlot] = 7; frames(m, 2, aspect); CHECK_EQ(wanted(set), w0); CHECK(w0 >= 1);
+        nes->ram[kCurSaveSlot] = 0xFF; frames(m, 2, aspect); CHECK_EQ(wanted(set), w0);
+        nes->ram[kCurSaveSlot] = saveSlot; m.fog = saveFog; m.viewHeight = saveH; m.shadows = nullptr; frames(m, 2, aspect);
+    }
     {   // what Link had out when he left a screen still lights it in its shadow: fire, a bomb's flash, the sword's shot, trails of the boomerang and arrows; an armos glows
         m.fog = false; m.lighting = true; set.enabled = true;
         set.pool[0].adopt(*nes, east); Nes& sn = set.pool[0].nes(); for (int sl = 1; sl <= 0x13; sl++) { sn.ram[kObjType + sl] = 0; sn.ram[kObjState + sl] = 0; }

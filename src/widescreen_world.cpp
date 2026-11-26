@@ -17,12 +17,12 @@ void Widescreen::blitRoom(Nes& nes, Canvas& out, int roomX, int roomY, int minY,
             if (cx < 0 || cx >= out.w) continue;
             const int i = (HUD_H + r) * Ppu::W + x;
             const uint8_t owner = nes.ppu.sprOam[(HUD_H + r) * Ppu::SPR_W + x];
-            const bool hidden = owner < 64 && hideSprite[owner];            // a sprite we draw elsewhere (or not at all)
+            const bool hidden = owner < kOamEntries && hideSprite[owner];            // a sprite we draw elsewhere (or not at all)
             uint32_t col = hidden ? nes.ppu.bgColor[i] : nes.ppu.fbColor[i];
             if (blitSecrets) {
                 const int kind = blitSecrets[(x >> 3) * OverworldMap::TILE_ROWS + (r >> 3)];
                 // Armos statues are sprites (not Link's); everything else is scenery (not under Link or a monster).
-                if (kind && (owner >= 64 || (kind == SecretArmos && owner != 18 && owner != 19 && !hidden))) {
+                if (kind && (owner >= kOamEntries || (kind == SecretArmos && owner != kLinkOam0 && owner != kLinkOam1 && !hidden))) {
                     bool ground = false;                                         // the ground is what the square's corners show (a tree or rock never fills them)
                     if (kind == SecretBurn || kind == SecretPush) {
                         const uint32_t* b = &nes.ppu.bgColor[(HUD_H + (r & ~15)) * Ppu::W + (x & ~15)];
@@ -71,7 +71,7 @@ void Widescreen::drawOverhang(Nes& nes, Canvas& out, int roomX, int roomY, int m
     // right edge. The original cuts them there; here the missing parts are drawn into the neighbouring screens. (Not
     // below the bottom: nothing real is ever there, but the game parks hidden sprites in that area.)
     bool hud[64];
-    for (int i = 0; i < 64; i++) hud[i] = hudSpriteEntry(nes.ppu.oam, i) || hideSprite[i];
+    for (int i = 0; i < kOamEntries; i++) hud[i] = hudSpriteEntry(nes.ppu.oam, i) || hideSprite[i];
     for (int y = 0; y < FRAME_H; y++) {
         const int cy = roomY + (y - HUD_H);
         if (cy < minY || cy >= out.h) continue;
@@ -91,6 +91,54 @@ void Widescreen::drawOverhang(Nes& nes, Canvas& out, int roomX, int roomY, int m
         }
     }
 }
+
+namespace {
+// Fog depth along each border and corner of a fogged room: short where either side of it is blocked (water only counts as walkable where it touches real ground, see owWalkMask).
+// `nb` = which of the 8 neighbours are explored (kFogNb order); `tilesOf(room)` = a screen's tiles.
+void fogDepthsOf(int room, const uint8_t* tiles, uint8_t nb, const std::function<const uint8_t*(int)>& tilesOf, FogDepths& fd) {
+    bool mine[704];
+    owWalkMask(tiles, mine);
+    auto theirs = [&](int k, bool* m) { const int nx = (room & 15) + kFogNb[k][0], ny = (room >> 4) + kFogNb[k][1];
+                                        if (!(nb >> k & 1) || nx < 0 || nx >= 16 || ny < 0 || ny >= 8) return false;
+                                        owWalkMask(tilesOf(ny * 16 + nx), m); return true; };
+    bool nm[704];
+    for (int side = 0; side < 4; side++) {
+        static const int kSideK[4] = {1, 3, 4, 6};
+        const bool has = theirs(kSideK[side], nm);
+        for (int i = 0; i < (side == 0 || side == 3 ? 32 : 22); i++) {
+            bool ok = true;
+            for (int j = 0; j < 2 && has; j++) {          // the two rows / columns on each side of the border
+                const int a = side == 0 ? i * 22 + j : side == 3 ? i * 22 + 21 - j : side == 1 ? j * 22 + i : (31 - j) * 22 + i;
+                const int b = side == 0 ? i * 22 + 21 - j : side == 3 ? i * 22 + j : side == 1 ? (31 - j) * 22 + i : j * 22 + i;
+                ok = ok && mine[a] && nm[b];
+            }
+            fd.d[side][i] = (uint8_t)(ok ? kFogDepth : kFogDepthWall);
+        }
+    }
+    for (int c = 0; c < 4; c++) {                         // corners NW, NE, SW, SE
+        // The patch is an ellipse: horizontally as deep as the border to the north / south room (the light that spreads
+        // along the neighbour's edge continues here: the glow of that straight border has the same width), vertically
+        // as the border to the west / east room. Each is short when the 2x2 tiles on both sides of that border, or of
+        // the corner itself, are blocked.
+        static const int kCornerK[4] = {0, 2, 5, 7}, kVK[4] = {1, 1, 6, 6}, kHK[4] = {3, 4, 3, 4};
+        bool dm[704], vm[704], hm[704];
+        auto load = [&](int k, bool* m) { const int nx = (room & 15) + kFogNb[k][0], ny = (room >> 4) + kFogNb[k][1];
+                                          if (nx < 0 || nx >= 16 || ny < 0 || ny >= 8) return false;
+                                          owWalkMask(tilesOf(ny * 16 + nx), m); return true; };
+        const bool hasD = load(kCornerK[c], dm), hasV = load(kVK[c], vm), hasH = load(kHK[c], hm);
+        const int cx = c & 1 ? 30 : 0, cy = c & 2 ? 20 : 0, ox = c & 1 ? 0 : 30, oy = c & 2 ? 0 : 20;
+        bool okD = true, okV = true, okH = true;
+        for (int i = 0; i < 2; i++) for (int j = 0; j < 2; j++) {
+            okD = okD && (!hasD || (mine[(cx + i) * 22 + cy + j] && dm[(ox + i) * 22 + oy + j]));
+            okV = okV && (!hasV || (mine[(cx + i) * 22 + cy + j] && vm[(cx + i) * 22 + oy + j]));   // border to the N/S room
+            okH = okH && (!hasH || (mine[(cx + i) * 22 + cy + j] && hm[(ox + i) * 22 + cy + j]));   // border to the W/E room
+        }
+        fd.diagX[c] = (uint8_t)(okV && okD ? kFogDepth : kFogDepthWall);
+        fd.diagY[c] = (uint8_t)(okH && okD ? kFogDepth : kFogDepthWall);
+    }
+}
+
+}  // namespace
 
 void Widescreen::drawWorld(Nes& nes, Canvas& out, int camX, int camY, int slot, const FlashEffect& fl) {
     perf::Scope perfScope(perf::kWorld);                      // (includes pass A of the water)
@@ -144,50 +192,7 @@ void Widescreen::drawWorld(Nes& nes, Canvas& out, int camX, int camY, int slot, 
                 if (v.disc || v.reveal) v.sec = roomSecrets(nes, room);   // (hidden secrets are only marked in explored screens, and already under the fog while one is being unfogged)
                 v.outer = nes.cart.cpuRead(kAttrsA + room) & 3;
                 v.inner = nes.cart.cpuRead(kAttrsB + room) & 3;
-                // Fog depth along each border: short where either side of it is blocked (water only counts as walkable where it
-                // touches real ground, see owWalkMask).
-                if (!v.disc && v.nb) {
-                bool mine[704];
-                owWalkMask(v.tiles, mine);
-                auto theirs = [&](int k, bool* m) { const int nx = (room & 15) + kFogNb[k][0], ny = (room >> 4) + kFogNb[k][1];
-                                                    if (!(v.nb >> k & 1) || nx < 0 || nx >= 16 || ny < 0 || ny >= 8) return false;
-                                                    owWalkMask(roomTiles(nes, ny * 16 + nx), m); return true; };
-                bool nm[704];
-                for (int side = 0; side < 4; side++) {
-                    static const int kSideK[4] = {1, 3, 4, 6};
-                    const bool has = !v.disc && theirs(kSideK[side], nm);
-                    for (int i = 0; i < (side == 0 || side == 3 ? 32 : 22); i++) {
-                        bool ok = true;
-                        for (int j = 0; j < 2 && has; j++) {          // the two rows / columns on each side of the border
-                            const int a = side == 0 ? i * 22 + j : side == 3 ? i * 22 + 21 - j : side == 1 ? j * 22 + i : (31 - j) * 22 + i;
-                            const int b = side == 0 ? i * 22 + 21 - j : side == 3 ? i * 22 + j : side == 1 ? (31 - j) * 22 + i : j * 22 + i;
-                            ok = ok && mine[a] && nm[b];
-                        }
-                        v.fd.d[side][i] = (uint8_t)(ok ? kFogDepth : kFogDepthWall);
-                    }
-                }
-                for (int c = 0; c < 4; c++) {                         // corners NW, NE, SW, SE
-                    // The patch is an ellipse: horizontally as deep as the border to the north / south room (the light that spreads
-                    // along the neighbour's edge continues here: the glow of that straight border has the same width), vertically
-                    // as the border to the west / east room. Each is short when the 2x2 tiles on both sides of that border, or of
-                    // the corner itself, are blocked.
-                    static const int kCornerK[4] = {0, 2, 5, 7}, kVK[4] = {1, 1, 6, 6}, kHK[4] = {3, 4, 3, 4};
-                    bool dm[704], vm[704], hm[704];
-                    auto load = [&](int k, bool* m) { const int nx = (room & 15) + kFogNb[k][0], ny = (room >> 4) + kFogNb[k][1];
-                                                      if (nx < 0 || nx >= 16 || ny < 0 || ny >= 8) return false;
-                                                      owWalkMask(roomTiles(nes, ny * 16 + nx), m); return true; };
-                    const bool hasD = load(kCornerK[c], dm), hasV = load(kVK[c], vm), hasH = load(kHK[c], hm);
-                    const int cx = c & 1 ? 30 : 0, cy = c & 2 ? 20 : 0, ox = c & 1 ? 0 : 30, oy = c & 2 ? 0 : 20;
-                    bool okD = true, okV = true, okH = true;
-                    for (int i = 0; i < 2; i++) for (int j = 0; j < 2; j++) {
-                        okD = okD && (!hasD || (mine[(cx + i) * 22 + cy + j] && dm[(ox + i) * 22 + oy + j]));
-                        okV = okV && (!hasV || (mine[(cx + i) * 22 + cy + j] && vm[(cx + i) * 22 + oy + j]));   // border to the N/S room
-                        okH = okH && (!hasH || (mine[(cx + i) * 22 + cy + j] && hm[(ox + i) * 22 + cy + j]));   // border to the W/E room
-                    }
-                    v.fd.diagX[c] = (uint8_t)(okV && okD ? kFogDepth : kFogDepthWall);
-                    v.fd.diagY[c] = (uint8_t)(okH && okD ? kFogDepth : kFogDepthWall);
-                }
-                }
+                if (!v.disc && v.nb) fogDepthsOf(room, v.tiles, v.nb, [&](int r) { return roomTiles(nes, r); }, v.fd);
             }
         }
         if (!v.endsDone && !v.disc && v.nb) {

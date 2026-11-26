@@ -197,6 +197,14 @@ static void testMmc1() {
     // PRG RAM
     nes.cpuWrite(0x6000, 0x5A); nes.cpuWrite(0x7FFF, 0xA5);
     CHECK_EQ(nes.cpuRead(0x6000), 0x5A); CHECK_EQ(nes.cpuRead(0x7FFF), 0xA5);
+    {   // 32 KB switching on a PRG of three 16 KB banks (not a multiple of 32 KB): the read wraps inside the image
+        std::vector<uint8_t> odd = makeRom(code, 0xC000, 0xC000, 3);
+        odd[16 + 16128] = 0x77;                                               // image offset 16128 = (bank 2 * 16 KB + $7F00) mod 48 KB
+        auto n3 = std::make_unique<Nes>(); boot(*n3, odd);
+        auto ser = [&](uint16_t addr, uint8_t v) { for (int k = 0; k < 5; k++) n3->cpuWrite(addr, (v >> k) & 1); };
+        ser(0x8000, 0x00); ser(0xE000, 2);                                     // control: 32 KB mode; PRG bank 2
+        CHECK_EQ(n3->cpuRead(0xFF00), 0x77);
+    }
 }
 
 // ---------------------------------------------------------------- PPU render test
@@ -830,6 +838,34 @@ static void testShadow() {
         // a screen with no shadow of its own is left as the game laid it out
         auto q2 = realGame(0x35); ShadowSet p2; p2.enabled = true; p2.forceSpinSteps = ShadowSet::kSpinStepsPerFrame; put(*q2, 4, 6, 0xC0, 0xC1, 0xC2, 0xC3); q2->ram[0x301] = 0; q2->ram[0x12] = 5; p2.update(*q2);
         CHECK_EQ(get(*q2, 4, 6), 0xC0); CHECK_EQ((int)q2->ram[0x301], 0);
+    }
+    {   // the PPU transfer buffer is only $302-$33E long (OpenDoorwayMask follows): a busy buffer is left alone, a free one is used up to its end
+        auto find = [&](ShadowSet& st, int room) -> ShadowGame* { for (ShadowGame* g : st.active) if (g->room() == room) return g; return nullptr; };
+        auto put = [&](Nes& n, int col, int row, uint8_t a, uint8_t b, uint8_t c, uint8_t d) {
+            n.cart.cpuWrite((uint16_t)(0x6530 + col * 22 + row), a); n.cart.cpuWrite((uint16_t)(0x6530 + col * 22 + row + 1), b);
+            n.cart.cpuWrite((uint16_t)(0x6530 + (col + 1) * 22 + row), c); n.cart.cpuWrite((uint16_t)(0x6530 + (col + 1) * 22 + row + 1), d); };
+        auto get = [&](Nes& n, int col, int row) { return (int)n.cart.cpuRead((uint16_t)(0x6530 + col * 22 + row)); };
+        for (int len : {0x38, 0x31, 0xF0}) {
+            auto q = realGame(0x35); ShadowSet ps; ps.enabled = true; ps.forceSpinSteps = ShadowSet::kSpinStepsPerFrame;
+            for (int i = 0; i < 330; i++) ps.update(*q);
+            ShadowGame* sh = find(ps, 0x36); CHECK(sh && sh->ready());
+            if (!sh) continue;
+            put(sh->nes(), 4, 6, 0x70, 0x71, 0x72, 0x73); put(*q, 4, 6, 0xC0, 0xC1, 0xC2, 0xC3);
+            q->ram[0x301] = (uint8_t)len; q->ram[0x33F] = 0xAB; q->ram[0x340] = 0xCD;                              // (the bytes after the buffer: the game's own variables)
+            q->ram[0xEB] = 0x36; q->ram[0x12] = 4; ps.armHandOff(*q); ps.update(*q);
+            CHECK_EQ((int)q->ram[0x33F], 0xAB); CHECK_EQ((int)q->ram[0x340], 0xCD);                                  // never written past the buffer
+            if (len == 0x31) { CHECK_EQ((int)q->ram[0x301], 0x31 + 10); CHECK_EQ(get(*q, 4, 6), 0x70); }             // 49 + 11 = 60 <= 61: fits
+            else             { CHECK_EQ((int)q->ram[0x301], len); CHECK_EQ(get(*q, 4, 6), 0xC0); }                    // no room: the statue is left for the next frame
+        }
+    }
+    {   // a retry starts the same screen again from the REAL game, whichever shadow the first start came from (the offset is worked out from the rooms)
+        auto src = realGame(0x44); auto real = realGame(0x35);                                                      // (a shadow of 0x44 stands in for the source)
+        ShadowGame g; CHECK(g.start(*src, 0, -1, 1)); CHECK_EQ(g.room(), 0x34);                                    // made from 0x44, one screen up
+        CHECK(g.retry(*real, 5)); CHECK_EQ(g.room(), 0x34);                                                        // the real game is at 0x35: the target is still 0x34 (it used to become 0x25)
+        CHECK(g.state() == ShadowGame::State::SpinUp);
+        ShadowGame far; CHECK(far.start(*src, 0, -1, 1));
+        auto away = realGame(0x37);                                                                                // three screens from the target: no walk to it from there
+        CHECK(!far.retry(*away, 5)); CHECK_EQ(far.room(), 0x34); CHECK(far.state() == ShadowGame::State::Failed);
     }
     {   // scenery (the dock of the raft, rocks, trees) is never handed over: a raft a shadow's Link had started would drag the real Link up the screen
         auto q = realGame(0x35); ShadowGame g; g.adopt(*q, 0x35); Nes& hs = g.nes();

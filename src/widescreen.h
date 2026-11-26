@@ -151,6 +151,9 @@ public:
     int lastOverRoom = -1; bool cellarBlackSeen = false;               // the last overworld screen (for the statues' glow while a dungeon is entered); a cellar's own picture has appeared
     void gatherWareLights(Nes& nes, int ox, int oy, bool cave);
     void itemGlow(int st, float x, float y, int s, bool sparkle);                      // glow (and glitter) of an item on the ground
+    bool lootGlow(int id, float x, float y, bool sparkle);                             // the glow and glitter of a fairy, triforce shard, heart container, heart or rupees by item id
+    void addArmosLight(float x, float y, bool secret, float phase);                    // an armos' halo: blue, the secret one red
+    void gatherWeaponLights(const uint8_t* ram, int ox, int oy, bool sparkle, bool tracked);   // what Link has out (real screen or a shadow): shot, trails, bombs, fire
     void gatherShadowLights(int curRoom, int slot, bool sparkle, bool withBridge = false);                      // N8: glow and glitter of the items, fairies and flames on the shadow games' screens
     int roomAge = 0, roomPlayAge = 0, lightSpace = -1, sparkOx = 0, sparkOy = 0;        // frames on this screen; 0 overworld / 1 cave / 2 dungeon; where the sparkles' space starts
     int slideX = 0, slideY = 0, prevSx = 0, prevOy = 0;                 // how far the room has slid (mode 7), counted frame by frame
@@ -384,6 +387,11 @@ private:
     void applyMazeFx(Canvas& c);
     void redoBackdropWater(Canvas& c);               // the water of the cave box's backdrop (waves, reflections) keeps moving
     void renderCore(Nes& nes, double windowAspect, Canvas& out);
+    struct ShadowPlan { bool scene = false, takeover = false, bridge = false; int cur = -1, fade = 256; };   // N: what is drawn of the neighbour screens with this picture
+    ShadowPlan planShadows(const Nes& nes, const ViewSnapshot& view, Layout layout, Kind kind);
+    void traceShadows(const ViewSnapshot& view, bool shadowScene) const;
+    void publishWantedScreens(const ViewSnapshot& view, int camX, int camY, int W, int canvasH);
+    void shadowBombFlash(FlashEffect& flash, const ViewSnapshot& view, int slot) const;
     int  unfogRoom = -1;                // room being revealed (-1 = none); it counts as undiscovered for drawing until the animation ends
     int  unfogT = 0;                    // frames elapsed
     int  unfogX = 0, unfogY = 0;        // where Link entered, inside that room (world pixels)

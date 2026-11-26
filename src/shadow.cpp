@@ -27,16 +27,12 @@ bool ShadowGame::start(const Nes& real, int dx, int dy, uint32_t seed) {
     if (!game) game = std::make_unique<Nes>();
     game->cloneFrom(real, true);
     game->lagFree = true;                                             // (the game's logic always finishes within its frame: RAM can be changed between frames)
-    uint8_t* r = game->ram;
-    uint32_t x = seed * 2654435761u + 12345u;                         // reseed the RNG: the shadows must not move like the real game
-    bool any = false;
-    for (int i = 0; i < kRandomLen; i++) { x = x * 1664525u + 1013904223u; r[kRandom + i] = (uint8_t)(x >> 24); any = any || r[kRandom + i]; }
-    if (!any) r[kRandom] = 1;
+    reseed(seed);                                                     // (the shadows must not move like the real game)
     hearts = kUnkillable; heartPart = kUnkillable;
     hopCount = 0; hopIdx = 0;
     if (dx) { hopDir[hopCount] = dx > 0 ? 1 : 2; hopRoom[hopCount++] = (uint8_t)((from & 0xF0) + (from & 15) + dx); }
     if (dy) { hopDir[hopCount] = dy > 0 ? 4 : 8; hopRoom[hopCount++] = (uint8_t)t; }
-    dxs = dx; dys = dy; attempts = 1; failedFrames = 0;
+    attempts = 1; failedFrames = 0;
     target = t; hopIssued = false; hopFrames = 0; settle = 0; frameCount = 0;
     st = State::SpinUp;
     return true;
@@ -50,10 +46,12 @@ void ShadowGame::adopt(const Nes& src, int room) {
 }
 
 bool ShadowGame::retry(const Nes& real, uint32_t seed) {
-    if (attempts >= kMaxAttempts) return false;
+    if (attempts >= kMaxAttempts || target < 0) return false;
     const int a = attempts + 1;
     const int oldTarget = target;
-    if (!start(real, dxs, dys, seed)) { st = State::Failed; lastFail = "start refused"; target = oldTarget; return false; }
+    const int from = real.ram[kRoomId] & 0x7F;                         // (the offset is worked out from where the real game is now: a shadow made from another shadow knows only ITS offset)
+    const int dx = (oldTarget & 15) - (from & 15), dy = (oldTarget >> 4) - (from >> 4);
+    if (std::abs(dx) > 1 || std::abs(dy) > 1 || !start(real, dx, dy, seed)) { st = State::Failed; lastFail = "start refused"; target = oldTarget; return false; }
     attempts = a;
     return true;
 }
@@ -83,22 +81,32 @@ bool ShadowGame::captureFrom(const Nes& real, int room, uint32_t seed) {
     game->cloneFrom(real, true);
     game->lagFree = true;
     uint8_t* r = game->ram;
-    wrng = seed * 747796405u + 2891336453u;
-    uint32_t x = seed * 2654435761u + 12345u;
-    bool any = false;
-    for (int i = 0; i < kRandomLen; i++) { x = x * 1664525u + 1013904223u; r[kRandom + i] = (uint8_t)(x >> 24); any = any || r[kRandom + i]; }
-    if (!any) r[kRandom] = 1;
+    reseed(seed);
     hearts = kUnkillable; heartPart = kUnkillable;
     r[kGameMode] = kModePlay; r[kGameSubmode] = 0; r[kIsUpdatingMode] = 1;      // back into play (mode 6 had only just begun): the monsters carry on where they were
     r[kCurLevel] = 0; r[kRoomId] = (uint8_t)room;                                // (a warp had already set the level / the cellar's room)
-    r[kObjState] = 0; r[kObjShoveDir] = 0; r[kObjShoveDistance] = 0; r[kObjInvincibilityTimer] = 0; r[0x0F] = 0;
+    clearLeaveState();
     placeLinkNeutral();
-    target = room; dxs = dys = 0; attempts = kMaxAttempts; failedFrames = 0;   // (no retry: there is nothing to walk to)
+    target = room; attempts = kMaxAttempts; failedFrames = 0;   // (no retry: there is nothing to walk to)
     hopCount = hopIdx = 0; hopIssued = false; settle = 0; frameCount = 0;
     st = State::Ready;
     game->ppu.lineCtrl[100] = game->ppu.ctrl;
     stepFrame();                                                      // (the sprites the game hid in mode 6 / $10 are drawn again: no blink on the first frame)
     return true;
+}
+
+void ShadowGame::reseed(uint32_t seed) {
+    wrng = seed * 747796405u + 2891336453u;
+    uint8_t* r = game->ram;
+    uint32_t x = seed * 2654435761u + 12345u;
+    bool any = false;
+    for (int i = 0; i < kRandomLen; i++) { x = x * 1664525u + 1013904223u; r[kRandom + i] = (uint8_t)(x >> 24); any = any || r[kRandom + i]; }
+    if (!any) r[kRandom] = 1;                                         // (an all-zero shift register never changes)
+}
+
+void ShadowGame::clearLeaveState() {
+    uint8_t* r = game->ram;
+    r[kObjState] = 0; r[kObjShoveDir] = 0; r[kObjShoveDistance] = 0; r[kObjInvincibilityTimer] = 0; r[kLeaveRoomScratch] = 0;
 }
 
 void ShadowGame::issueHop() {
@@ -107,8 +115,7 @@ void ShadowGame::issueHop() {
     r[kObjDir] = dir;
     r[kObjX] = dir == 1 ? kEdgeRight : dir == 2 ? kEdgeLeft : kCenterX;
     r[kObjY] = dir == 4 ? kEdgeDown : dir == 8 ? kEdgeUp : kCenterY;
-    r[kObjGridOffset] = 0; r[kObjState] = 0; r[kObjShoveDir] = 0; r[kObjShoveDistance] = 0; r[kObjInvincibilityTimer] = 0;
-    r[0x0F] = 0;
+    r[kObjGridOffset] = 0; clearLeaveState();
     r[kGameSubmode] = 0; r[kIsUpdatingMode] = 0; r[kGameMode] = kModeLeave;   // what GoToNextModeFromPlay does (Z_07.asm 3036)
 }
 
@@ -123,7 +130,7 @@ void ShadowGame::wanderLink() {
     uint8_t* r = game->ram;
     auto rnd = [&]() { wrng = wrng * 1664525u + 1013904223u; return (int)(wrng >> 16); };
     auto safe = [&](float x, float y) {
-        for (int s = 1; s <= 0x13; s++)
+        for (int s = 1; s <= kLastMonsterSlot; s++)
             if (r[kObjType + s] == kTypeItem && std::fabs(x - r[kObjX + s]) < kItemClear && std::fabs(y + 3 - r[kObjY + s]) < kItemClear) return false;
         // The room item (a heart container, a triforce piece) has no object type: the game draws it and lets Link take it all the same (the stand-in took the overworld's heart container
         // as he strolled over the lake: its room flag was set in the shadow and it stayed gone until Link walked into the screen himself).
@@ -208,6 +215,8 @@ void ShadowSet::clear() {
     for (ShadowGame& g : pool) g.reset();
     active.clear(); base = -1; bridge = nullptr; bridgeHold = 0; departed = false; wasOverworldPlay = false; dropDelay = -1;   // (an armed hand-off stays armed: it is for the screen the real game is loading)
 }
+
+void ShadowSet::pruneIdle() { active.erase(std::remove_if(active.begin(), active.end(), [](ShadowGame* o) { return o->state() == ShadowGame::State::Idle; }), active.end()); }
 
 ShadowGame* ShadowSet::alloc() {
     for (ShadowGame& g : pool) if (g.state() == ShadowGame::State::Idle && &g != bridge) return &g;
@@ -381,7 +390,7 @@ void ShadowSet::update(Nes& real) {
                 if (dc > 1 || dr > 1) g->reset();                       // (two screens out: it was made from another shadow; topUp makes it afresh)
                 else g->retry(real, (uint32_t)(real.cpu.totalCycles >> 3) + (uint32_t)g->room() * 31u);
             }
-    active.erase(std::remove_if(active.begin(), active.end(), [](ShadowGame* o) { return o->state() == ShadowGame::State::Idle; }), active.end());
+    pruneIdle();
 }
 
 // The screen being left (`room`) goes on as a shadow; there is never more than one shadow of a screen.
@@ -391,7 +400,7 @@ ShadowGame* ShadowSet::capture(const Nes& real, int room) {
     if (!g->captureFrom(real, room, (uint32_t)(real.cpu.totalCycles >> 5) + (uint32_t)room * 131u)) { captureFailures++; lastCaptureFailure = real.cpu.inNmi() ? "the game was inside its NMI handler" : "maze screen or bad room"; return nullptr; }
     captures++;
     for (ShadowGame* o : active) if (o != g && o->room() == g->room()) o->reset();
-    active.erase(std::remove_if(active.begin(), active.end(), [](ShadowGame* o) { return o->state() == ShadowGame::State::Idle; }), active.end());
+    pruneIdle();
     if (bridge && bridge->state() == ShadowGame::State::Idle) { bridge = nullptr; bridgeHold = 0; }   // (the old bridging shadow of this screen was just replaced)
     active.push_back(g);
     return g;
@@ -400,7 +409,7 @@ ShadowGame* ShadowSet::capture(const Nes& real, int room) {
 // Nothing could be taken over from the shadow of the screen Link is in: it is dropped (two simulations of one screen would run side by side).
 void ShadowSet::retire(int room) {
     for (ShadowGame* g : active) if (g->room() == room) { g->reset(); if (g == bridge) { bridge = nullptr; bridgeHold = 0; } }
-    active.erase(std::remove_if(active.begin(), active.end(), [](ShadowGame* o) { return o->state() == ShadowGame::State::Idle; }), active.end());
+    pruneIdle();
 }
 
 // The entered screen's shadow has done its bridging: the real game's monsters are the only ones now.
@@ -426,7 +435,7 @@ int ShadowSet::carryTiles(Nes& real) {
             const uint8_t t0 = g->tile(col, row), t1 = g->tile(col, row + 1), t2 = g->tile(col + 1, row), t3 = g->tile(col + 1, row + 1);
             if (t0 == kArmosTile && t1 == kArmosTile + 1 && t2 == kArmosTile + 2 && t3 == kArmosTile + 3) continue;       // (still a statue there)
             const int len = real.ram[kDynTileBufLen];
-            if (len + 11 > 0xFE) return n;                                                                               // (the buffer is full: the next frame)
+            if (len + 11 > kDynTileBufSize) return n;                                                                               // (the buffer is full: the next frame)
             const int y = (kHudRows + row) * 8, ppu = 0x2000 + y * 4 + col;                                              // (MapScreenPosToPpuAddr, Z_01.asm 4901)
             const uint8_t rec[11] = {(uint8_t)(ppu >> 8), (uint8_t)ppu, 0x82, t0, t1, (uint8_t)(ppu >> 8), (uint8_t)(ppu + 1), 0x82, t2, t3, 0xFF};
             std::memcpy(&real.ram[kDynTileBuf + len], rec, sizeof rec);

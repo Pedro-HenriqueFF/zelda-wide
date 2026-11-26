@@ -26,7 +26,7 @@ void Widescreen::renderGlide(Nes& nes, double windowAspect, Canvas& out) {
     topBand = hudOverlay ? 0 : HUD_H;
     outIsBackdrop = false;
     const int H = topBand + vh;
-    const int W = std::clamp((int)std::lround(H * windowAspect) & ~1, 512, 2048);
+    const int W = wd::canvasWidth(H, windowAspect);
     out.w = W; out.h = H;
     out.pixels.assign((size_t)W * H, 0xFF000000);
     heldInterior = false;

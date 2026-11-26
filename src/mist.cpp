@@ -12,6 +12,7 @@ float smooth(float x) { x = std::clamp(x, 0.0f, 1.0f); return x * x * (3 - 2 * x
 }  // namespace
 
 void Mist::init() {
+    static_assert((kTex & (kTex - 1)) == 0 && kTex % 32 == 0, "the mist texture wraps with a mask and its octaves divide it evenly");
     uint32_t s = 0x1F2E3D4Cu;
     // A tileable cloud texture: four octaves of value noise on a wrapping lattice.
     tex.assign((size_t)kTex * kTex, 0);

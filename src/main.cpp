@@ -82,6 +82,18 @@ static uint8_t readInput(SDL_GameController* pad) {
     return b;
 }
 
+// Runs the game with the picture switched off while `more()` holds (at most `maxFrames` frames): the frames nobody sees play the same game, much faster.
+// Returns true when at least one frame was skipped.
+template <class More> static bool runLite(Nes& nes, int maxFrames, More more) {
+    int frames = 0;
+    bool skipped = false;
+    nes.ppu.lite = true;
+    while (more() && frames++ < maxFrames) { nes.runFrame(); skipped = true; }
+    nes.ppu.lite = false;
+    return skipped;
+}
+constexpr int kMenuSlideMaxFrames = 400, kScrollMaxFrames = 600;   // (the inventory's slide takes ~78 frames, an overworld scroll ~60: these only stop a game that never gets there)
+
 int main(int argc, char** argv) {
     std::string romPath;
     bool optNoWide = false, optNoFog = false, optVerify = false, optTrace = false;
@@ -259,27 +271,13 @@ int main(int argc, char** argv) {
                 const int mode0 = nes.ram[zelda::kGameMode];
                 if (mode0 == zelda::kModePlay || mode0 == zelda::kModeCellar || mode0 == zelda::kModeCave || mode0 == zelda::kModeShortcut) {
                     const int openState = nes.ram[zelda::kCurLevel] == 0 ? 8 : 7;
-                    int guard = 0;
-                    bool skipped = false;
-                    nes.ppu.lite = true;       // (the frames nobody sees are not drawn: the game runs the same, much faster)
-                    while (nes.ram[zelda::kMenuState] != 0 && nes.ram[zelda::kMenuState] != openState && guard++ < 400) {
-                        nes.runFrame();
-                        skipped = true;
-                    }
-                    nes.ppu.lite = false;
+                    const bool skipped = runLite(nes, kMenuSlideMaxFrames, [&] { return nes.ram[zelda::kMenuState] != 0 && nes.ram[zelda::kMenuState] != openState; });
                     if (skipped) {
                         nes.runFrame();            // show the first frame of the final picture
                         wide.resetLag();
                     }
                 }
-                int guard = 0;
-                bool skipped = false;
-                nes.ppu.lite = true;           // (the scroll nobody sees is not drawn: about 60 frames of game logic without the picture; the last frame below is drawn)
-                while (nes.ram[zelda::kCurLevel] == 0 && nes.ram[zelda::kGameMode] == zelda::kModeScroll && !wide.keepScroll(nes) && guard++ < 600) {
-                    nes.runFrame();
-                    skipped = true;
-                }
-                nes.ppu.lite = false;
+                const bool skipped = runLite(nes, kScrollMaxFrames, [&] { return nes.ram[zelda::kCurLevel] == 0 && nes.ram[zelda::kGameMode] == zelda::kModeScroll && !wide.keepScroll(nes); });   // (the scroll nobody sees: about 60 frames of game logic without the picture; the last frame below is drawn)
                 if (skipped) {
                     shadows.carryTiles(nes);   // the statues of armos that woke here are gone before the first picture of the screen (N)
                     nes.runFrame();            // let the game finish its first frame on the new screen
@@ -327,6 +325,7 @@ int main(int argc, char** argv) {
             }
             for (size_t i = 0; i < ov.images.size() && i < kMaxOverlays; i++) {
                 const OverlayImage& img = ov.images[i];
+                if (img.w <= 0 || img.h <= 0 || img.pixels.size() < (size_t)img.w * (size_t)img.h) continue;   // (a malformed piece is skipped, never read past its end)
                 OverlayTexture& ot = overlayTex[i];
                 // Scale: whole numbers, except for pieces that ask for a fractional size (heightPerScale + sharpScale):
                 // those are blown up by the next whole number and shrunk smoothly, which stays nearly as crisp.
