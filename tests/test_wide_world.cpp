@@ -1,6 +1,7 @@
 // Widescreen integration tests: the world view, camera, fog of war, zoom, the glide between screens, title/dungeon pictures.
 // Sections run in numeric order (see test_wide.cpp) on one shared Ctx: later sections rely on state (fog discovered,
 // palettes, RAM) left by earlier ones, so do not reorder them.
+#include <string>
 #include <memory>
 #include <cstdio>
 #include "test_wide_common.h"
@@ -67,9 +68,34 @@ void section04(Ctx& t) {
 
 void section05(Ctx& t) {
     SECTION_BINDINGS
-    // 5. World edge: nothing beyond room $00's left edge.
+    // 5. World edge: beyond room $00's left edge lies the deep fog (not black), with F2 on or off.
     setState(5, 0x00); frames(ws, 2, aspect);
-    CHECK_EQ(px(0, 100), 0xFF000000);
+    CHECK(px(0, 100) != 0xFF000000 && isFog(px(0, 100)));
+    CHECK(isFog(px(0, HUD_H)) && isFog(px(3, HUD_H + 1)));      // (the corner of the playfield, below the status bar)
+    ws.fog = false; frames(ws, 2, aspect);
+    CHECK(isFog(px(0, 100)));
+    ws.fog = true; frames(ws, 2, aspect);
+    // The Delete key's dump of the map's borders: 16 + 16 + 8 + 8 screens, each with the ids of its three outermost tile lines.
+    {
+        const char* path = "/tmp/zw_edge_dump.txt";
+        CHECK(ws.dumpEdges(path));
+        std::string txt; { FILE* f = std::fopen(path, "r"); CHECK(f != nullptr); if (f) { char b[4096]; size_t n; while ((n = std::fread(b, 1, sizeof b, f)) > 0) txt.append(b, n); std::fclose(f); } }
+        int screens = 0; for (size_t p = txt.find("screen column"); p != std::string::npos; p = txt.find("screen column", p + 1)) screens++;
+        CHECK_EQ(screens, 48);
+        auto ids = [&](const char* header, int line) {                         // the first id of "line N ids:" under a header
+            const size_t h = txt.find(header); if (h == std::string::npos) return -1;
+            const std::string key = "line " + std::to_string(line) + " ids: ";
+            const size_t p = txt.find(key, h); if (p == std::string::npos) return -1;
+            return (int)std::strtol(txt.c_str() + p + key.size(), nullptr, 16);
+        };
+        const int R = OverworldMap::TILE_ROWS;
+        const uint8_t* nw = ws.roomTilesFor(*nes, 0x00); const uint8_t* w = ws.roomTilesFor(*nes, 0x10); const uint8_t* e = ws.roomTilesFor(*nes, 0x2F); const uint8_t* so = ws.roomTilesFor(*nes, 0x75);
+        CHECK_EQ(ids("NORTH screen column 0 row 0 (room 00)", 0), (int)nw[0 * R + 0]);
+        CHECK_EQ(ids("NORTH screen column 0 row 0 (room 00)", 2), (int)nw[0 * R + 2]);
+        CHECK_EQ(ids("WEST screen column 0 row 1 (room 10)", 1), (int)w[1 * R + 0]);        // (the second column from the west edge, its first row)
+        CHECK_EQ(ids("EAST screen column 15 row 2 (room 2F)", 0), (int)e[31 * R + 0]);
+        CHECK_EQ(ids("SOUTH screen column 5 row 7 (room 75)", 1), (int)so[0 * R + (R - 2)]);
+    }
 }
 
 void section08(Ctx& t) {

@@ -321,7 +321,7 @@ void Widescreen::drawWorld(Nes& nes, Canvas& out, int camX, int camY, int slot, 
             const int n = std::min(8 - (wx & 7), W - x);             // pixels left in this 8-pixel tile column
             const int rx = floorDiv(wx, ROOM_W);
 
-            if (rx >= 0 && rx < 16 && ry >= 0 && ry < 8) {           // outside the world stays black
+            if (rx >= 0 && rx < 16 && ry >= 0 && ry < 8) {           // (outside the map: the deep fog, whatever F2 says)
                 const int room = ry * 16 + rx;
                 RoomView& rv = roomView(room);
                 const int lx = wx - rx * ROOM_W;
@@ -377,6 +377,8 @@ void Widescreen::drawWorld(Nes& nes, Canvas& out, int camX, int camY, int slot, 
                         row[x + i] = v == 256 ? col : mixColor(scaleColor(fogPixel(wx + i, wy), fogScale), col, v);
                     }
                 }
+            } else {                                                 // beyond the map: the deep fog (the terrain behind it is black: no water there)
+                for (int i = 0; i < n; i++) row[x + i] = scaleColor(fogPixel(wx + i, wy), fogScale);
             }
             x += n;
         }

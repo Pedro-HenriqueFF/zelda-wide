@@ -122,6 +122,7 @@ current screen (not on top of Link or a monster). The Lost Woods and the Lost Hi
 ### Fog of war
 Screens you have never stood in are covered by fog that thins towards explored neighbours.
 
+Beyond the edge of the 16 x 8 map the same near-black fog fills the view (with `F2` on or off; no water or objects there).
 Screens you have never stood in are covered by near-black fog. Next to an explored screen the fog starts fully
 transparent at the border and becomes solid over about 37 pixels where Link could walk over the border (water counts as
 walkable only where its body touches ground Link can stand on, a bridge or a shore); the sand of the desert screens (tiles $84-$88; the game blocks tiles from $89 on) counts as ground; where the tiles on either side are blocked (walls, trees, rocks) it becomes solid within about 12 pixels, with a
@@ -181,6 +182,7 @@ Lakes, rivers and ponds mirror the scenery, Link, monsters and shots; the big la
 - **The water grid.** The water grid is built again whenever the game's screen data or the background tile patterns change (another level's attributes in the PRG-RAM, a loaded save, another level's tiles in the CHR-RAM); which tiles count as trees comes from the patterns, the mountain wall tiles ($CE-$D1, $D8-$DB) never do. The picture behind a cave's or shop's box has the water effects of the screen too (the reflections of its scenery), and its water keeps moving (waves, ripples and reflections are made again every frame from the terrain and the room's picture as they were before the water). The effect is drawn on the terrain before the fog is mixed in (so it fades with the fog) and again on the game's own picture of the current screen (which holds the sprites).
 - **Dropped items.** Items on the ground (a dropped heart, rupees, a fairy) stand on their lowest drawn row, so their reflection starts right under them.
 - **Debugging.** `Home` writes `water_debug.txt` (tile ids and water flags of the current screen, plus the water grid's totals, the water colour found and the pattern table in use) next to the program. The window title shows the current screen's column and row.
+  `Delete` writes `edge_dump.txt`: for every screen on the map's four borders its palettes and the three outermost tile lines (classes W water, D dock/ladder, M mountain, T tree, . ground, ? other, and the tile ids).
 
 ### Death scene
 The whole picture fades when Link dies, not only the bottom half the game fades.

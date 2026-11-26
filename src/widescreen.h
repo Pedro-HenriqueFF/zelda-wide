@@ -102,6 +102,7 @@ public:
     uint64_t wwSig = 0; uint32_t dbgBlue = 0;
     int dbgLink[4] = {0, 0, 0, 0};                                              // (Link's position, scenery-or-object, distance to the water: for water_debug.txt)
     void dumpWaterDebug(const char* path);                                       // Home key: tile ids and water flags of the current screen
+    bool dumpEdges(const char* path);                                            // Delete key: tile ids along the four borders of the map (widescreen_beyond.cpp)
     std::vector<uint8_t> wwKind;                                                // per world tile (512 x 176): 1 water, 2 big body, 4 reflects whole
     bool wwReady = false, waterDone = false;                                    // waterDone: this picture's water was drawn by drawWorld (and the game's room by pass B)
     std::vector<uint32_t> wSrcBuf;                                              // waterPass: the picture as it was

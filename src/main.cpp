@@ -216,6 +216,7 @@ int main(int argc, char** argv) {
                     case SDL_SCANCODE_N:      shadows.enabled = !shadows.enabled; if (!shadows.enabled) shadows.clear(); std::printf("Neighbour screens running (shadow games): %s\n", shadows.enabled ? "on" : "off"); break;
                     case SDL_SCANCODE_PAGEUP: if (shadows.dump("shadow_debug.txt")) std::printf("shadow_debug.txt written: %s\n", shadows.summary().c_str()); break;
                     case SDL_SCANCODE_HOME:   wide.dumpWaterDebug("water_debug.txt"); std::printf("water_debug.txt written\n"); break;
+                    case SDL_SCANCODE_DELETE: std::printf(wide.dumpEdges("edge_dump.txt") ? "edge_dump.txt written\n" : "edge_dump.txt: not available now\n"); break;
                     case SDL_SCANCODE_END:    wide.waterReflections = !wide.waterReflections; std::printf("Water reflections: %s\n", wide.waterReflections ? "on" : "off"); break;
                     case SDL_SCANCODE_PAGEDOWN: wide.waterWaves = !wide.waterWaves; std::printf("Water waves: %s\n", wide.waterWaves ? "on" : "off"); break;
                     case SDL_SCANCODE_INSERT: wide.nesLimits = !wide.nesLimits; std::printf("NES limits (sprite flicker and slowdown): %s\n", wide.nesLimits ? "on" : "off"); break;

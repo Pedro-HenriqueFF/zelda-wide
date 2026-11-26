@@ -10,7 +10,7 @@ A from-scratch NES emulator (6502, MMC1, PPU) with an SDL2 front-end, built to p
 > **You must supply your own ROM.** No game data is included or needed to build. Target ROM: `Legend of Zelda, The (U) (PRG0) [!].nes`.
 > This is an unofficial fan project, not affiliated with or endorsed by Nintendo.
 
-Current version: **milestone 112**. Playable start to finish except for sound (not implemented).
+Current version: **milestone 113**. Playable start to finish except for sound (not implemented).
 
 ## What it does
 
@@ -69,7 +69,7 @@ Game controllers work too (south button = B, east button = A).
 | `Insert` | the NES's own sprite limits and slowdown on/off |
 | `` ` `` | fast-forward while held |
 
-More keys (debug dumps with `Home` and `Page Up`) and the command line options (`--no-wide`, `--no-fog`, `--trace`, `--perf`) are in [FEATURES.md](FEATURES.md).
+More keys (debug dumps with `Home`, `Page Up` and `Delete`) and the command line options (`--no-wide`, `--no-fog`, `--trace`, `--perf`) are in [FEATURES.md](FEATURES.md).
 
 ## Tests
 
