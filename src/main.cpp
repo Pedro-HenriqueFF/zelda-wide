@@ -136,8 +136,8 @@ int main(int argc, char** argv) {
     wide.verify = optVerify;
     wide.trace = optTrace;
     wide.loadFog(fogPath);
-    const std::string beyondPath = savePath.substr(0, savePath.size() - 4) + ".beyond.txt";     // the hand-made rooms below the map (a template is written when missing)
-    auto pollBeyond = [&]() { std::string err; if (wide.loadBeyondFile(beyondPath, err)) std::printf(err.empty() ? "%s loaded\n" : "%s: %s\n", beyondPath.c_str(), err.empty() ? "" : err.c_str()); };
+    const std::string beyondPath = savePath.substr(0, savePath.size() - 4) + ".beyond.txt";     // optional file replacing the built-in rooms below the map
+    auto pollBeyond = [&]() { std::string err; if (wide.loadBeyondFile(beyondPath, err)) std::printf(err.empty() ? "%s loaded (replaces the built-in layout of the rooms below the map)\n" : "%s: %s\n", beyondPath.c_str(), err.empty() ? "" : err.c_str()); };
     pollBeyond();
 
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMECONTROLLER) != 0) {
@@ -220,7 +220,8 @@ int main(int argc, char** argv) {
                     case SDL_SCANCODE_PAGEUP: if (shadows.dump("shadow_debug.txt")) std::printf("shadow_debug.txt written: %s\n", shadows.summary().c_str()); break;
                     case SDL_SCANCODE_HOME:   wide.dumpWaterDebug("water_debug.txt"); std::printf("water_debug.txt written\n"); break;
                     case SDL_SCANCODE_B:      wide.fadeMode = (wide.fadeMode + 1) % beyond::kFadeModes; std::printf("Edge of the world fades: %s\n", beyond::fadeName(wide.fadeMode)); break;
-                    case SDL_SCANCODE_DELETE: std::printf(wide.dumpEdges("edge_dump.txt") && wide.dumpSquares("squares.txt", "squares_sheet.bmp") ? "edge_dump.txt, squares.txt and squares_sheet.bmp written\n" : "dumps: not available now\n"); break;
+                    case SDL_SCANCODE_DELETE: { std::ofstream bl("beyond_builtin.txt"); bl << beyond::builtinText(); }
+                              std::printf(wide.dumpEdges("edge_dump.txt") && wide.dumpSquares("squares.txt", "squares_sheet.bmp") ? "edge_dump.txt, squares.txt, squares_sheet.bmp and beyond_builtin.txt written\n" : "dumps: not available now\n"); break;
                     case SDL_SCANCODE_END:    wide.waterReflections = !wide.waterReflections; std::printf("Water reflections: %s\n", wide.waterReflections ? "on" : "off"); break;
                     case SDL_SCANCODE_PAGEDOWN: wide.waterWaves = !wide.waterWaves; std::printf("Water waves: %s\n", wide.waterWaves ? "on" : "off"); break;
                     case SDL_SCANCODE_INSERT: wide.nesLimits = !wide.nesLimits; std::printf("NES limits (sprite flicker and slowdown): %s\n", wide.nesLimits ? "on" : "off"); break;

@@ -23,8 +23,9 @@ third_party/
 water_debug.txt
 shadow_debug.txt
 shadow_test_dump.txt
-edge_dump.txt
 squares.txt
+edge_dump.txt
+beyond_builtin.txt
 squares_sheet.bmp
 
 # Packaged milestones and other archives

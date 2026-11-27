@@ -17,11 +17,11 @@ enum class Zone : uint8_t { Inside, Extrude, Sea, Custom };
 // (mountains, trees); Sea = water; Custom = below rooms $74..$7B: the hand-made patch, and sea where the patch ends.
 Zone zoneOf(int tx, int ty);
 // How far the extension reaches before it is all fog, in screens (land = the repeated mountains/trees, sea = the sea and the custom rooms);
-// Next to a sea the land's reach is longer (kSeamReach screens at the seam, a quarter ellipse back to the land's own over kSeamWidth px), so the side of
-// the mountains by the water stays a little visible. 0 = no fade at all (the extension goes on to the end of the band of tiles).
+// Next to a sea the land's fog edge stays level at the land's own reach and bends down along the seam (a quarter ellipse over kSeamWidth px, reaching the sea's
+// depth at the seam), so the side of the mountains by the water stays visible as far as the sea does. 0 = no fade at all (the extension goes on to the end of the band of tiles).
 struct Fade { float land, sea; };
 constexpr int kFadeModes = 3;
-constexpr float kSeamReach = 1.5f, kSeamWidth = 256.f;
+constexpr float kSeamWidth = 256.f;
 Fade fadeFor(int mode);                // 0: land 0.5 + sea 3.5, 1: land 1 + sea 3.5, 2: no fade
 const char* fadeName(int mode);
 // Terrain share (0..256) of a pixel beyond the map: 256 at the border, 0 once the fade length is passed.
@@ -34,8 +34,9 @@ struct File {
     std::array<int, kPatchCount> rows{};                      // squares tall (0 = no patch: sea)
     std::array<std::vector<char>, kPatchCount> grid;          // rows * 16 legend characters
 };
-File defaults();
+File defaults();                                          // the built-in legend only, no patches
+const char* builtinText();                                // the layout built into the program (beyond_default.cpp), in the file's own format
+File builtin();                                           // ... parsed (the defaults if it does not parse)
 // Parses the text of the file; false with a message ("line N: ...") on the first error, `out` is then left as it was.
 bool parse(const std::string& text, File& out, std::string& err);
-std::string templateText();
 }

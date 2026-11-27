@@ -23,7 +23,7 @@ endif()
 # ---- Emulator core (no SDL dependency, so it can be unit-tested headless) ----
 add_library(nescore STATIC
   src/cpu.cpp src/cart.cpp src/ppu.cpp src/nes.cpp src/world.cpp
-  src/widescreen.cpp src/widescreen_state.cpp src/widescreen_hud.cpp src/widescreen_world.cpp src/widescreen_sprites.cpp src/widescreen_glide.cpp src/widescreen_save.cpp src/widescreen_stairs.cpp src/clouds.cpp src/lighting.cpp src/widescreen_light.cpp src/widescreen_water.cpp src/widescreen_water_apply.cpp src/widescreen_beyond.cpp src/beyond.cpp src/widescreen_dungeon.cpp src/widescreen_door.cpp src/mist.cpp src/shadow.cpp src/widescreen_shadow.cpp)
+  src/widescreen.cpp src/widescreen_state.cpp src/widescreen_hud.cpp src/widescreen_world.cpp src/widescreen_sprites.cpp src/widescreen_glide.cpp src/widescreen_save.cpp src/widescreen_stairs.cpp src/clouds.cpp src/lighting.cpp src/widescreen_light.cpp src/widescreen_water.cpp src/widescreen_water_apply.cpp src/widescreen_beyond.cpp src/beyond.cpp src/beyond_default.cpp src/widescreen_dungeon.cpp src/widescreen_door.cpp src/mist.cpp src/shadow.cpp src/widescreen_shadow.cpp)
 target_include_directories(nescore PUBLIC src)
 # Faster builds: the std headers are parsed once per target (precompiled), and MSVC compiles several files at the same time.
 target_precompile_headers(nescore PRIVATE <algorithm> <cmath> <cstdint> <cstring> <functional> <memory> <string> <vector>)

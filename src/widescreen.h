@@ -108,11 +108,11 @@ public:
     // The world beyond the map (widescreen_beyond.cpp): mountains/trees repeat outwards, sea goes on, hand-made rooms from <rom>.beyond.txt.
     int fadeMode = 0;                                                           // B key: how far the extension reaches (beyond::fadeFor)
     bool extendWorld = true;                                                    // (tests of the older sections switch it off)
-    beyond::File beyondFile = beyond::defaults(); unsigned beyondEpoch = 0;
+    beyond::File beyondFile = beyond::builtin(); unsigned beyondEpoch = 0;
     std::vector<uint16_t> ringTile; std::vector<uint8_t> ringKind;              // the band around the map (RW x RH tiles): id | palette << 8, water-pass flags
     uint64_t ringSig = 0; bool ringReady = false; long long beyondMtime = -1;
     std::string loadBeyond(const std::string& text);                            // parses the file's text; "" or the error message
-    bool loadBeyondFile(const std::string& path, std::string& err);             // (re)reads the file when it changed (modification time); creates the template when missing
+    bool loadBeyondFile(const std::string& path, std::string& err);             // (re)reads the optional file when it changed (modification time); without a file the built-in layout is used
     void ensureBeyond(Nes& nes);                                                // builds the band again when the border screens, palettes or the file changed
     uint16_t ringTileAt(int gx, int gy) const;                                  // world tile coordinates; 0xFFFF = no data (inside the map or too far out)
     uint8_t gridKind(int gx, int gy, bool* valid = nullptr) const;              // the water pass's flags of a world tile: the map's grid, else the band

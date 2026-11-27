@@ -71,10 +71,7 @@ std::string Widescreen::loadBeyond(const std::string& text) {
 bool Widescreen::loadBeyondFile(const std::string& path, std::string& err) {
     namespace fs = std::filesystem;
     std::error_code ec;
-    if (!fs::exists(path, ec)) {                                // a template to start from
-        std::ofstream o(path); if (!o) return false;
-        o << beyond::templateText();
-    }
+    if (!fs::exists(path, ec)) return false;                    // (no file: the built-in layout)
     const fs::file_time_type t = fs::last_write_time(path, ec);
     if (ec) return false;
     const long long m = (long long)t.time_since_epoch().count();

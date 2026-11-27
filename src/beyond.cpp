@@ -35,8 +35,8 @@ float landReach(const Fade& f, int wx, int wy) {
     if (wy < 0 && wx < 14 * 256) a = (float)(14 * 256 - wx);
     else if (wy >= kMapTilesH * 8 && wx < kPatchFirstCol * 256) a = (float)(kPatchFirstCol * 256 - wx);
     if (a >= kSeamWidth) return f.land;
-    const float u = a / kSeamWidth, reach = std::max(f.land, kSeamReach);
-    return f.land + (reach - f.land) * std::sqrt(1.f - u * u);
+    const float u = (kSeamWidth - a) / kSeamWidth;              // 0 where the land's own reach applies, 1 at the seam
+    return f.land + (std::max(f.sea, f.land) - f.land) * (1.f - std::sqrt(std::max(0.f, 1.f - u * u)));
 }
 }
 
@@ -113,39 +113,6 @@ bool parse(const std::string& text, File& out, std::string& err) {
     out = f; return true;
 }
 
-std::string templateText() {
-    return
-"# Hand-made rooms below the bottom edge of the map (rooms 74 .. 7B). Everything else beyond the map is made by the program:\n"
-"# mountains and trees repeat outwards, the sea goes on east, above the two top right screens and below the right-hand screens.\n"
-"# Where a patch ends, the sea goes on. Save this file and the game picks it up within a second.\n"
-"#\n"
-"# A square is 16 x 16 pixels (a room is 16 squares wide and 11 tall). The legend gives a character its four tiles, reading order\n"
-"# top-left top-right bottom-left bottom-right (or one tile id for all four), and the palette 0-3 of the area (see the palettes of the\n"
-"# border rooms in edge_dump.txt: rooms 74-78 use palettes 2 and 3). Tile ids are hex. Do not use '#' as a character.\n"
-"# Built in (you can redefine them):\n"
-"#   legend ~ = 90 90 95 95 pal 3      sea\n"
-"#   legend . = 26 pal 0               ground\n"
-"#   legend M = D8 DA D9 DB pal 3      mountain wall\n"
-"#   legend T = C4 C6 C5 C7 pal 3      trees\n"
-"# Tile ids seen on the map: water interior 90 (even row) / 95 (odd row), left shore 8E, right shore 92, top edge 8F, top corners 8D / 91,\n"
-"# bottom edge 94 / 96 / 98; ground 26; mountain wall D8 DA D9 DB; scalloped mountain top CE D0 CF D1; trees C4-C7.\n"
-"#\n"
-"# The game's own squares: instead of four tile ids, \"sq NN\" (hex, 00-37) takes the square the game's room layouts use, e.g.\n"
-"#   legend W = sq 05 pal 3\n"
-"# The Delete key writes squares_sheet.bmp (every square drawn with the current palettes; four blocks = palettes 0, 1, 2, 3 from top to bottom;\n"
-"# each square has its number under it) and squares.txt (the tile ids). Press it on the overworld. By their tiles (check them in the sheet):\n"
-"#   05 water, 06 / 07 / 08 / 09 water top / bottom / left / right edge, 15 / 16 / 17 / 18 water corners (top-left, top-right, bottom-left,\n"
-"#   bottom-right), 04 an inner water corner, 0E ground, 19 trees, 1A scalloped mountain top, 1B mountain wall, 0A ladder, 0B dock.\n"
-"#\n"
-"# A patch: the room it hangs under, the number of rows (squares, 1-20), then that many lines of exactly 16 characters.\n"
-"# Example (half a screen of ground under room 75 with the river going on into the sea; delete the # signs to try it):\n"
-"#\n"
-"# below 75 rows 5\n"
-"# MMMMMM~~~~MMMMMM\n"
-"# ......~~~~......\n"
-"# ......~~~~......\n"
-"# ~~~~~~~~~~~~~~~~\n"
-"# ~~~~~~~~~~~~~~~~\n";
-}
+File builtin() { File f; std::string err; return parse(builtinText(), f, err) ? f : defaults(); }
 
 }  // namespace beyond

@@ -1,6 +1,7 @@
 // Section 35: the world beyond the map's edge (extended terrain, sea, hand-made rooms, fade, waves).
 #include <memory>
 #include <cstdio>
+#include <cstdlib>
 #include "test_wide_common.h"
 #include "widescreen_internal.h"
 #include "beyond.h"
@@ -27,7 +28,9 @@ void section35(Ctx& t) {
                              "below 75 rows 21\n", "below 7C rows 1\n................\n"};
         for (const char* b : bad) { beyond::File g = f; std::string e; CHECK(!beyond::parse(b, g, e) && !e.empty() && g.rows == f.rows && g.legend.size() == f.legend.size()); }
         std::string e; beyond::File g; CHECK(!beyond::parse("# a\n\nlegend Q = 26 pal 9\n", g, e) && e.rfind("line 3:", 0) == 0);      // (the line number counts comments and blanks)
-        CHECK(beyond::parse(beyond::templateText(), g, e) && g.rows[1] == 0);                                                       // (the template is valid and has no patch)
+        const int want[8] = {11, 7, 7, 7, 7, 6, 6, 6};                                                                                         // (the built-in layout: the rooms below 74-7B, designed by the user)
+        beyond::File b = beyond::builtin(); bool rowsOk = true; for (int k = 0; k < 8; k++) rowsOk = rowsOk && b.rows[k] == want[k] && b.grid[k].size() == (size_t)want[k] * 16;
+        CHECK(beyond::parse(beyond::builtinText(), g, e) && rowsOk && g.rows == b.rows && b.legend.count('~') && b.legend['~'].sq == 5 && b.legend['~'].pal == 3 && b.legend['-'].pal == 2);
     }
     // 35b. Zones and fade.
     {
@@ -51,6 +54,12 @@ void section35(Ctx& t) {
         CHECK(beyond::fadeVis(4 * 256 - 10, 1408 + 100, fm) > beyond::fadeVis(4 * 256 - 600, 1408 + 100, fm) && beyond::fadeVis(4 * 256 - 600, 1408 + 100, fm) == beyond::fadeVis(100, 1408 + 100, fm));      // south seam (column 4)
         CHECK(beyond::fadeVis(14 * 256 + 10, -100, fm) == beyond::fadeVis(14 * 256 + 200, -100, fm));                                                                                       // (the sea side does not change)
         CHECK(beyond::fadeVis(14 * 256 - 10, -100, beyond::fadeFor(2)) == 256);
+        // the curve: level at the land's own reach, then down along the seam, reaching the sea's depth AT the seam
+        bool bend = true; { int pv = -1; for (int aa = 0; aa <= 320; aa += 8) { const int v = beyond::fadeVis(14 * 256 - 1 - aa, -100, fm); bend = bend && v >= 0 && (pv < 0 || v <= pv); pv = v; } }
+        CHECK(bend);                                                                                                                                            // (less and less as it goes away from the seam)
+        CHECK(std::abs(beyond::fadeVis(14 * 256 - 1, -100, fm) - beyond::fadeVis(14 * 256 + 1, -100, fm)) <= 5 && beyond::fadeVis(14 * 256 - 1, -100, fm) > 200);   // (no step at the seam: the land beside the sea is as clear as the sea)
+        CHECK(beyond::fadeVis(14 * 256 - 40, -100, fm) > beyond::fadeVis(14 * 256 - 120, -100, fm) && beyond::fadeVis(14 * 256 - 120, -100, fm) > 0 && beyond::fadeVis(14 * 256 - 260, -100, fm) == 0);   // (100 px up, 260 px from the seam: only the land's own half screen, gone)
+        CHECK(beyond::fadeVis(14 * 256 - 16, -100, fm) > 200 && beyond::fadeVis(14 * 256 - 128, -100, fm) < 128);                                          // (the shape: still clear 16 px from the seam, mostly faded half a screen out: a curve down INTO the seam, not a plateau)
         // the three configurations: land 0.5 / 1 screens, sea 3.5, and none
         const beyond::Fade f0 = beyond::fadeFor(0), f2 = beyond::fadeFor(2);
         CHECK(beyond::fadeVis(-130, 500, f0) == 0 && beyond::fadeVis(-130, 500, f1) > 0 && beyond::fadeVis(-130, 500, f2) == 256);
@@ -62,6 +71,13 @@ void section35(Ctx& t) {
     auto outerOf = [&](int room) { return (int)(nes->cart.cpuRead((uint16_t)(kAttrsA + room)) & 3); };
     auto w_h = std::make_unique<Widescreen>(); Widescreen& w = *w_h; w.init(*nes, err); w.unfogAnim = false; w.cloudShadow = false; w.lighting = false;
     w.fxNes = nes.get(); w.fxRoom = 0; w.fxSlot = 0; w.fxOx = 0; w.fxOy = 0;
+    {   // the built-in rooms are in use without any file: room 75's patch starts with mountains and the river (square 05, palette 2) at square column 5
+        uint8_t s5[4]; CHECK(w.overworldMap().squareTiles(5, s5));
+        w.ensureBeyond(*nes);
+        const uint16_t river = w.ringTileAt(5 * 32 + 10, 176), wall = w.ringTileAt(5 * 32 + 2, 176);
+        const uint16_t brown = w.ringTileAt(9 * 32 + 2, 176);                                                  // (room 79's patch: brown mountains, palette 3; the fixture ROM's squares are all tile 0, so the palettes tell them apart)
+        CHECK(river != 0xFFFF && (river & 0xFF) == s5[0] && (river >> 8) == 2 && wall != 0xFFFF && (wall >> 8) == 2 && brown != 0xFFFF && (brown >> 8) == 3);
+    }
     CHECK_EQ(w.fadeMode, 0);                                                                            // (the default: land 0.5 + sea 3.5 screens)
     w.ensureBeyond(*nes);
     auto ringId = [&](int tx, int ty) { const uint16_t v = w.ringTileAt(tx, ty); return v == 0xFFFF ? -1 : (int)(v & 0xFF); };
