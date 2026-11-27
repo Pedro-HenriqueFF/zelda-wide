@@ -136,6 +136,9 @@ int main(int argc, char** argv) {
     wide.verify = optVerify;
     wide.trace = optTrace;
     wide.loadFog(fogPath);
+    const std::string beyondPath = savePath.substr(0, savePath.size() - 4) + ".beyond.txt";     // the hand-made rooms below the map (a template is written when missing)
+    auto pollBeyond = [&]() { std::string err; if (wide.loadBeyondFile(beyondPath, err)) std::printf(err.empty() ? "%s loaded\n" : "%s: %s\n", beyondPath.c_str(), err.empty() ? "" : err.c_str()); };
+    pollBeyond();
 
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMECONTROLLER) != 0) {
         std::fprintf(stderr, "SDL_Init failed: %s\n", SDL_GetError());
@@ -189,7 +192,7 @@ int main(int argc, char** argv) {
     Uint64 next = SDL_GetPerformanceCounter();
     Uint64 fpsMark = next;
     int fpsFrames = 0;
-    Uint64 lastSave = next;
+    Uint64 lastSave = next, lastBeyond = next;
     bool running = true, warned = false;
 
     while (running) {
@@ -216,6 +219,7 @@ int main(int argc, char** argv) {
                     case SDL_SCANCODE_N:      shadows.enabled = !shadows.enabled; if (!shadows.enabled) shadows.clear(); std::printf("Neighbour screens running (shadow games): %s\n", shadows.enabled ? "on" : "off"); break;
                     case SDL_SCANCODE_PAGEUP: if (shadows.dump("shadow_debug.txt")) std::printf("shadow_debug.txt written: %s\n", shadows.summary().c_str()); break;
                     case SDL_SCANCODE_HOME:   wide.dumpWaterDebug("water_debug.txt"); std::printf("water_debug.txt written\n"); break;
+                    case SDL_SCANCODE_B:      wide.fadeMode = (wide.fadeMode + 1) % beyond::kFadeModes; std::printf("Edge of the world fades: %s\n", beyond::fadeName(wide.fadeMode)); break;
                     case SDL_SCANCODE_DELETE: std::printf(wide.dumpEdges("edge_dump.txt") ? "edge_dump.txt written\n" : "edge_dump.txt: not available now\n"); break;
                     case SDL_SCANCODE_END:    wide.waterReflections = !wide.waterReflections; std::printf("Water reflections: %s\n", wide.waterReflections ? "on" : "off"); break;
                     case SDL_SCANCODE_PAGEDOWN: wide.waterWaves = !wide.waterWaves; std::printf("Water waves: %s\n", wide.waterWaves ? "on" : "off"); break;
@@ -428,6 +432,7 @@ int main(int argc, char** argv) {
             }
             fpsFrames = 0; fpsMark = now;
         }
+        if (now - lastBeyond >= freq) { pollBeyond(); lastBeyond = now; }                         // (edit the file while the game runs: it is read again within a second)
         if (now - lastSave >= 3 * freq) { writeSave(nes, savePath); wide.saveFogIfDirty(fogPath); lastSave = now; }
     }
 

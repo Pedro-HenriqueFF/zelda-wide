@@ -23,7 +23,7 @@ endif()
 # ---- Emulator core (no SDL dependency, so it can be unit-tested headless) ----
 add_library(nescore STATIC
   src/cpu.cpp src/cart.cpp src/ppu.cpp src/nes.cpp src/world.cpp
-  src/widescreen.cpp src/widescreen_state.cpp src/widescreen_hud.cpp src/widescreen_world.cpp src/widescreen_sprites.cpp src/widescreen_glide.cpp src/widescreen_save.cpp src/widescreen_stairs.cpp src/clouds.cpp src/lighting.cpp src/widescreen_light.cpp src/widescreen_water.cpp src/widescreen_water_apply.cpp src/widescreen_beyond.cpp src/widescreen_dungeon.cpp src/widescreen_door.cpp src/mist.cpp src/shadow.cpp src/widescreen_shadow.cpp)
+  src/widescreen.cpp src/widescreen_state.cpp src/widescreen_hud.cpp src/widescreen_world.cpp src/widescreen_sprites.cpp src/widescreen_glide.cpp src/widescreen_save.cpp src/widescreen_stairs.cpp src/clouds.cpp src/lighting.cpp src/widescreen_light.cpp src/widescreen_water.cpp src/widescreen_water_apply.cpp src/widescreen_beyond.cpp src/beyond.cpp src/widescreen_dungeon.cpp src/widescreen_door.cpp src/mist.cpp src/shadow.cpp src/widescreen_shadow.cpp)
 target_include_directories(nescore PUBLIC src)
 # Faster builds: the std headers are parsed once per target (precompiled), and MSVC compiles several files at the same time.
 target_precompile_headers(nescore PRIVATE <algorithm> <cmath> <cstdint> <cstring> <functional> <memory> <string> <vector>)
@@ -75,7 +75,7 @@ if(BUILD_TESTS)
   target_link_libraries(test_world PRIVATE nescore)
   add_test(NAME world COMMAND test_world)
   add_executable(test_wide tests/test_wide.cpp tests/test_wide_common.cpp tests/test_wide_world.cpp
-    tests/test_wide_caves.cpp tests/test_wide_hud.cpp tests/test_wide_sprites.cpp tests/test_wide_effects.cpp tests/test_wide_light.cpp tests/test_wide_water.cpp tests/test_wide_maze.cpp tests/test_wide_door.cpp tests/test_wide_stairs.cpp tests/test_wide_perf.cpp tests/test_wide_shadow.cpp)
+    tests/test_wide_caves.cpp tests/test_wide_hud.cpp tests/test_wide_sprites.cpp tests/test_wide_effects.cpp tests/test_wide_light.cpp tests/test_wide_water.cpp tests/test_wide_beyond.cpp tests/test_wide_maze.cpp tests/test_wide_door.cpp tests/test_wide_stairs.cpp tests/test_wide_perf.cpp tests/test_wide_shadow.cpp)
   target_link_libraries(test_wide PRIVATE nescore)
   add_test(NAME wide COMMAND test_wide)
   # The compositor objects are big and the tests are deep: Windows' default 1 MB stack is not enough (a crash, no message).

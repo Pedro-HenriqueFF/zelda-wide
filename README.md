@@ -10,11 +10,12 @@ A from-scratch NES emulator (6502, MMC1, PPU) with an SDL2 front-end, built to p
 > **You must supply your own ROM.** No game data is included or needed to build. Target ROM: `Legend of Zelda, The (U) (PRG0) [!].nes`.
 > This is an unofficial fan project, not affiliated with or endorsed by Nintendo.
 
-Current version: **milestone 113**. Playable start to finish except for sound (not implemented).
+Current version: **milestone 114**. Playable start to finish except for sound (not implemented).
 
 ## What it does
 
 - **Widescreen overworld** decoded straight from the ROM around the game's own picture, with a Link-centred camera, zoom and a glide between screens.
+- **No black border:** mountains, trees and sea continue past the edge of the map and fade into the fog; hand-made rooms below the map come from a text file.
 - **Fog of war** and a minimap: unexplored screens fade into the fog, hidden secrets of explored screens are hinted at.
 - **Neighbour screens running** (experimental, `N`): monsters, fairies and items of the screens next to Link keep moving in the margins, glowing and glittering like on his own screen (every screen you can see, whatever the zoom). The overworld never stops: through scrolls, caves and stairs (and the walk into a dungeon), and what Link left (monsters, a dropped item, an armos that woke, a burning candle's glow) is still there when he comes back.
 - **Atmosphere:** day/night cycle with dynamic light, cloud shadows, water reflections and waves, torches and water in dungeons, mist in the Lost Woods.
@@ -54,6 +55,7 @@ Game controllers work too (south button = B, east button = A).
 |-----|----------|
 | `F1` | day/night cycle and lights |
 | `F2` | fog of war (off = reveal the map) |
+| `B` | how far the world beyond the map reaches (3 fade settings) |
 | `F3` | widescreen on/off |
 | `F4` / `+` / `-` | zoom |
 | `F5` | reset the game |

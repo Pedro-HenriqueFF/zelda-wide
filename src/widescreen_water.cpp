@@ -50,6 +50,19 @@ void openTiles(Nes& nes, bool open[256]) {
 }
 }  // namespace
 
+namespace wd {
+// What a tile id means for the water pass (also for the tiles beyond the map): water, open (trees), stairs/ladder/docks, reflects whole.
+uint8_t tileKind(uint8_t id, bool open) {
+    uint8_t k = 0;
+    if (isWaterTile(id)) k |= kWater;
+    if (open) k |= kOpen;
+    if (isSpecial(id) || (id >= 0x70 && id <= 0x77)) k |= kStairs;          // the stairs, the ladder ($70-$75) and the docks ($76/$77): never water, whatever the colour
+    if (id >= 0x89 || isSpecial(id) || (id >= 0x70 && id <= 0x75)) k |= kFull;   // ($76/$77 are the docks: planks, not wall): walls, trees, stairs, the ladder...: the whole tile reflects
+    return k;
+}
+void openTilesOf(Nes& nes, bool open[256]) { openTiles(nes, open); }
+}
+
 // The water grid follows the game's own screen data: whenever the decode key of any screen changes (the game loads another level's attributes into
 // its PRG-RAM, a secret is found, a save is loaded) the grid is built again. (It used to be built once, from whatever the PRG-RAM held at the first frame.)
 void Widescreen::ensureWaterWorld() {
@@ -71,12 +84,8 @@ void Widescreen::buildWaterWorld() {
         for (int col = 0; col < 32; col++)
             for (int row = 0; row < R; row++) {
                 const uint8_t id = tiles[col * R + row];
-                uint8_t k = 0;
                 ids[(size_t)((room >> 4) * R + row) * GW + (room & 15) * 32 + col] = id;
-                if (wd::isWaterTile(id)) k |= kWater;
-                if (open[id]) k |= kOpen;
-                if (isSpecial(id) || (id >= 0x70 && id <= 0x77)) k |= kStairs;      // the stairs, the ladder ($70-$75) and the docks ($76/$77): never water, whatever the colour
-                if (id >= 0x89 || isSpecial(id) || (id >= 0x70 && id <= 0x75)) k |= kFull;   // ($76/$77 are the docks: planks, not wall)   // walls, trees, stairs, the ladder...: the whole tile reflects
+                const uint8_t k = wd::tileKind(id, open[id]);
                 wwKind[(size_t)((room >> 4) * R + row) * GW + (room & 15) * 32 + col] = k;
             }
     }
@@ -135,8 +144,8 @@ void Widescreen::waterPass(const WaterJob& j) {
     const int w = j.w, h = j.h, top = j.top, y0 = j.firstRow >= 0 ? j.firstRow : j.top;
     const float t = (float)waterTick;
     std::vector<uint8_t>& mask = *j.mask;                    // 0 land, 1 water, 2 water of a big body, 3 unknown (fog / outside the world)
-    auto kindAt = [&](int wx, int wy) -> uint8_t { const int gx = wx >> 3, gy = wy >> 3; return (wx < 0 || wy < 0 || gx >= GW || gy >= GH) ? 0 : wwKind[(size_t)gy * GW + gx]; };
-    auto near3 = [&](int gx, int gy, uint8_t bit) { for (int dy = -1; dy <= 1; dy++) for (int dx = -1; dx <= 1; dx++) { const int x = gx + dx, y = gy + dy; if (x >= 0 && y >= 0 && x < GW && y < GH && (wwKind[(size_t)y * GW + x] & bit)) return true; } return false; };
+    auto kindAt = [&](int wx, int wy) -> uint8_t { return gridKind(wx >> 3, wy >> 3); };      // (the map's grid, beyond it the band of the extended world)
+    auto near3 = [&](int gx, int gy, uint8_t bit) { for (int dy = -1; dy <= 1; dy++) for (int dx = -1; dx <= 1; dx++) if (gridKind(gx + dx, gy + dy) & bit) return true; return false; };
     if (j.computeMask) {
         // The canvas rows cut into segments that lie in one world tile (what that tile is is looked up once per segment, not per pixel).
         struct Seg { int x0, x1, gx; uint8_t kind; bool valid, nearWater, nearBig, never, ladder; };
@@ -147,8 +156,9 @@ void Widescreen::waterPass(const WaterJob& j) {
             for (int x = 0; x < w;) {
                 const int wx = x + j.camX, gx = wx >> 3, x1 = std::min(w, x + 8 - (wx & 7));
                 Seg g{x, x1, gx, 0, false, false, false, false, false};
-                if (wx >= 0 && gx < GW && gy >= 0 && gy < GH) {
-                    g.valid = true; g.kind = wwKind[(size_t)gy * GW + gx];
+                bool known = false; const uint8_t gk = gridKind(gx, gy, &known);
+                if (known) {
+                    g.valid = true; g.kind = gk;
                     g.nearWater = (g.kind & kWater) || near3(gx, gy, kWater);
                     g.nearBig = near3(gx, gy, kBig);
                 }
@@ -172,6 +182,7 @@ void Widescreen::waterPass(const WaterJob& j) {
         for (int y = std::max(top, y0); y < h; y++) for (Seg& g : rowOf(y)) {
             if (!g.valid || !(g.kind & kWater) || g.ladder) continue;
             const int gy = (y - top + j.camY) >> 3;
+            if (g.gx < 0 || g.gx >= GW || gy < 0 || gy >= GH) continue;                              // (no ladders beyond the map)
             for (int x = g.x0; x < g.x1 && !g.ladder; x++) {
                 const uint32_t c = j.px[(size_t)y * w + x]; const int r = c >> 16 & 255, gg = c >> 8 & 255, b = c & 255;
                 if (std::min({r, gg, b}) < 200 || std::max({r, gg, b}) - std::min({r, gg, b}) > 48) continue;
@@ -188,7 +199,7 @@ void Widescreen::waterPass(const WaterJob& j) {
             if (add.empty()) break;
             ladder.insert(add.begin(), add.end());
         }
-        for (int gy = gyMin; gy <= gyMax; gy++) for (Seg& g : rows[gy - gyMin]) g.never = g.valid && ((g.kind & kStairs) || (!ladder.empty() && ladder.count(gy * GW + g.gx)));
+        for (int gy = gyMin; gy <= gyMax; gy++) for (Seg& g : rows[gy - gyMin]) g.never = g.valid && ((g.kind & kStairs) || (!ladder.empty() && g.gx >= 0 && g.gx < GW && gy >= 0 && gy < GH && ladder.count(gy * GW + g.gx)));
         mask.assign((size_t)w * h, 3);
         par::forRange(y0, h, 16, [&](int ya, int yb) { for (int y = ya; y < yb; y++) {
             uint8_t* mrow = &mask[(size_t)y * w]; const uint32_t* prow = &j.px[(size_t)y * w];
@@ -359,8 +370,8 @@ void Widescreen::waterPass(const WaterJob& j) {
         if (b.yb >= 0) {
             b.gsq = (axis - 1 - b.yb) / kSquare;
             const int tx = (x + j.camX) >> 3, ty = (b.yb - top + j.camY) >> 3, by = ty | 1;                      // the square's bottom tiles
-            auto openAt = [&](int gx, int gy) { return gx >= 0 && gx < GW && gy >= 0 && gy < GH && (wwKind[(size_t)gy * GW + gx] & kOpen); };
-            auto stairsAt = [&](int gx, int gy) { return gx >= 0 && gx < GW && gy >= 0 && gy < GH && (wwKind[(size_t)gy * GW + gx] & kStairs); };
+            auto openAt = [&](int gx, int gy) { return (gridKind(gx, gy) & kOpen) != 0; };
+            auto stairsAt = [&](int gx, int gy) { return (gridKind(gx, gy) & kStairs) != 0; };
             b.tree = openAt(tx & ~1, by) && openAt(tx | 1, by) && !stairsAt(tx & ~1, by) && !stairsAt(tx | 1, by);   // a tree is round: open at both bottom corners
             b.ok = b.tree ? b.gsq == 0 : b.gsq < 3;
         }

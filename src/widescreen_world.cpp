@@ -292,6 +292,8 @@ void Widescreen::drawWorld(Nes& nes, Canvas& out, int camX, int camY, int slot, 
     }
     // The rows are worked out on several threads, so everything they would fill in lazily is made ready first (serially): the views of every
     // screen the canvas touches and of the ring around it (the fog seams look at their neighbours), the tiles and palettes, the fog glow caches.
+    const beyond::Fade fade = beyond::fadeFor(fadeMode);
+    ensureBeyond(nes);                                                   // (the band of tiles around the map, for the pixels beyond its edge)
     const uint8_t* tilesOf[128] = {}; int outerOf[128] = {}, innerOf[128] = {};
     {
         const int rx0 = std::clamp(floorDiv(camX, ROOM_W), 0, 15), rx1 = std::clamp(floorDiv(camX + W - 1, ROOM_W), 0, 15);
@@ -377,8 +379,20 @@ void Widescreen::drawWorld(Nes& nes, Canvas& out, int camX, int camY, int slot, 
                         row[x + i] = v == 256 ? col : mixColor(scaleColor(fogPixel(wx + i, wy), fogScale), col, v);
                     }
                 }
-            } else {                                                 // beyond the map: the deep fog (the terrain behind it is black: no water there)
-                for (int i = 0; i < n; i++) row[x + i] = scaleColor(fogPixel(wx + i, wy), fogScale);
+            } else {                                                 // beyond the map: the extended world (the band's tiles) fading into the deep fog, whatever F2 says
+                const uint16_t rt = ringTileAt(wx >> 3, wy >> 3);
+                if (rt == 0xFFFF) { for (int i = 0; i < n; i++) row[x + i] = scaleColor(fogPixel(wx + i, wy), fogScale); }
+                else {
+                    const int pal = rt >> 8; const uint16_t pat = (uint16_t)(patBase + (rt & 0xFF) * 16 + (wy & 7));
+                    const uint8_t lo = chr[pat - patBase], hi = chr[pat - patBase + 8];
+                    for (int i = 0; i < n; i++) {
+                        const int bit = 7 - ((wx + i) & 7), c = ((lo >> bit) & 1) | (((hi >> bit) & 1) << 1);
+                        const uint32_t col = bg[c ? (pal << 2) | c : 0];
+                        const int v = beyond::fadeVis(wx + i, wy, fade);
+                        if (water) { raw[(size_t)(y + M) * W + x + i] = v ? col : 0; vis[(size_t)(y + M) * W + x + i] = (uint16_t)v; }     // (fully faded: no terrain, no water work)
+                        row[x + i] = v >= 256 ? col : mixColor(scaleColor(fogPixel(wx + i, wy), fogScale), col, v);
+                    }
+                }
             }
             x += n;
         }

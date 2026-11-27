@@ -68,16 +68,18 @@ void section04(Ctx& t) {
 
 void section05(Ctx& t) {
     SECTION_BINDINGS
-    // 5. World edge: beyond room $00's left edge lies the deep fog (not black), with F2 on or off.
+    // 5. World edge: beyond room $00's left edge the mountains/trees go on (and fade into the deep fog); without the extension the deep fog is all there is, with F2 on or off.
     setState(5, 0x00); frames(ws, 2, aspect);
+    CHECK(px(0, 100) != 0xFF000000 && !isFog(px(0, 100)));
+    ws.extendWorld = false; frames(ws, 2, aspect);
     CHECK(px(0, 100) != 0xFF000000 && isFog(px(0, 100)));
     CHECK(isFog(px(0, HUD_H)) && isFog(px(3, HUD_H + 1)));      // (the corner of the playfield, below the status bar)
     ws.fog = false; frames(ws, 2, aspect);
     CHECK(isFog(px(0, 100)));
-    ws.fog = true; frames(ws, 2, aspect);
+    ws.fog = true; ws.extendWorld = true; frames(ws, 2, aspect);
     // The Delete key's dump of the map's borders: 16 + 16 + 8 + 8 screens, each with the ids of its three outermost tile lines.
     {
-        const char* path = "/tmp/zw_edge_dump.txt";
+        const char* path = "zw_edge_dump_test.txt";        // (a relative name: Windows has no /tmp)
         CHECK(ws.dumpEdges(path));
         std::string txt; { FILE* f = std::fopen(path, "r"); CHECK(f != nullptr); if (f) { char b[4096]; size_t n; while ((n = std::fread(b, 1, sizeof b, f)) > 0) txt.append(b, n); std::fclose(f); } }
         int screens = 0; for (size_t p = txt.find("screen column"); p != std::string::npos; p = txt.find("screen column", p + 1)) screens++;
@@ -88,6 +90,7 @@ void section05(Ctx& t) {
             const size_t p = txt.find(key, h); if (p == std::string::npos) return -1;
             return (int)std::strtol(txt.c_str() + p + key.size(), nullptr, 16);
         };
+        std::remove(path);
         const int R = OverworldMap::TILE_ROWS;
         const uint8_t* nw = ws.roomTilesFor(*nes, 0x00); const uint8_t* w = ws.roomTilesFor(*nes, 0x10); const uint8_t* e = ws.roomTilesFor(*nes, 0x2F); const uint8_t* so = ws.roomTilesFor(*nes, 0x75);
         CHECK_EQ(ids("NORTH screen column 0 row 0 (room 00)", 0), (int)nw[0 * R + 0]);

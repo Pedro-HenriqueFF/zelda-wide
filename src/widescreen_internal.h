@@ -35,6 +35,11 @@ constexpr int CAVE_MISMATCH_THRESHOLD = 250;   // of 704 tiles: more than this m
 // Water (widescreen_water.cpp, widescreen_dungeon.cpp): the whole world in tiles, the per-tile flags, the size of a reflection square.
 constexpr int GW = 16 * 32, GH = 8 * 22;
 enum : uint8_t { kWater = 1, kBig = 2, kFull = 4, kStairs = 8, kOpen = 16 };   // kOpen: a tile with plenty of background in it (trees, not wall)
+uint8_t tileKind(uint8_t id, bool open);                               // the water pass's flags of a tile id (widescreen_water.cpp)
+void openTilesOf(Nes& nes, bool open[256]);
+// The extended world around the map (widescreen_beyond.cpp): a band of tiles around the 16 x 8 map, as far as anything beyond it is still visible.
+constexpr int kRingL = 130, kRingR = 130, kRingT = 80, kRingB = 80;    // (the widest canvas shows 128 tiles either side of Link)
+constexpr int RW = GW + kRingL + kRingR, RH = GH + kRingT + kRingB;
 constexpr int kSquare = 16;
 inline int feetOf(int objY) { return objY + 17; }       // the sprite's rows are Y+1 .. Y+16: its feet end at Y+17 (screen rows, status bar included)
 

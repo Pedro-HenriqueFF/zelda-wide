@@ -122,7 +122,7 @@ current screen (not on top of Link or a monster). The Lost Woods and the Lost Hi
 ### Fog of war
 Screens you have never stood in are covered by fog that thins towards explored neighbours.
 
-Beyond the edge of the 16 x 8 map the same near-black fog fills the view (with `F2` on or off; no water or objects there).
+Beyond the edge of the 16 x 8 map the extended world continues (see "The world beyond the map"); past its fade the same near-black fog fills the view, with `F2` on or off.
 Screens you have never stood in are covered by near-black fog. Next to an explored screen the fog starts fully
 transparent at the border and becomes solid over about 37 pixels where Link could walk over the border (water counts as
 walkable only where its body touches ground Link can stand on, a bridge or a shore); the sand of the desert screens (tiles $84-$88; the game blocks tiles from $89 on) counts as ground; where the tiles on either side are blocked (walls, trees, rocks) it becomes solid within about 12 pixels, with a
@@ -149,6 +149,10 @@ for 2 seconds, then the mist lifts over the new view with Link already there. Th
 dim and haze as the bars above and below it. Link's own light (his sight, the candle) goes with his sprite while the maze scrolls into itself. The solved state lives in the same `<rom>.fog` file as the
 explored screens (a maze screen's bit there means "solved").
 
+
+## 2b. The world beyond the map
+The map has no black border: the camera shows what lies past its edge. Mountains and trees repeat outwards from every border in step with their 2 x 2 squares (west side, above rooms 00-0D, below 70-73); the sea goes on east of every east-border screen (whatever touches that border), above rooms 0E/0F and below 7C-7F; below rooms 74-7B hand-made rooms come first and the sea goes on where they end. Everything fades into the deep fog; `B` cycles three configurations: land 0.5 + sea 3.5 screens, land 1 + sea 3.5 screens (default), no fade (the extension goes on to the end of its band: 130 tiles east/west, 80 north/south). The extended sea has the same waves and reflections as the map's own water; terrain beyond the map is never fogged by exploration, has no secrets, objects or neighbour games.
+The hand-made rooms live in `<rom>.beyond.txt` next to the save (a commented template is written when it is missing; edit it while the game runs, it is read again within a second, an error is printed with its line number and the previous rooms stay). `legend X = id [id id id] pal P` maps a character to a 16 x 16 square (one tile id for all four tiles or four ids: top-left, top-right, bottom-left, bottom-right; palette 0-3), `below 75 rows N` is followed by N lines of exactly 16 characters, hanging under that room (74-7B, up to 20 rows). Built in: `~` sea, `.` ground, `M` mountain wall, `T` trees. `Delete` writes `edge_dump.txt` with the tile ids and palettes of the map's border screens as a reference.
 ## 3. Atmosphere
 
 ### Day and night, dynamic lights (`F1`, `T`, `L`)
