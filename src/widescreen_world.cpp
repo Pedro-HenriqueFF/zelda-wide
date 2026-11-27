@@ -309,6 +309,27 @@ void Widescreen::drawWorld(Nes& nes, Canvas& out, int camX, int camY, int slot, 
             }
     }
     par::forRange(topBand - M, H, 8, [&](int ya, int yb) {
+    // How much terrain of a room shows through its fog at a pixel (256 = all): the glow from explored neighbours, the seams, the unfogging patch.
+    auto visOf = [&](int room, RoomView& rv, int lx, int ly, int wxp, int wyp) -> int {
+        int v = 256;
+        if (!rv.disc) {
+            if (useVis) {                                            // (the glow of a room only changes with the explored rooms or the screen data: worked out once per pixel)
+                std::vector<uint16_t>& vm = fogVisMap[room];
+                if (vm.empty()) vm.assign((size_t)ROOM_W * ROOM_H, 0xFFFF);
+                uint16_t& cv = vm[(size_t)ly * ROOM_W + lx];
+                if (cv == 0xFFFF) cv = (uint16_t)seamVis(rv, room, lx, ly, wxp, wyp);
+                v = cv;
+            } else v = seamVis(rv, room, lx, ly, wxp, wyp);
+        }
+        if (rv.reveal) v = std::max(v, revealAmount(lx, ly));
+        return v;
+    };
+    // The world beyond the map follows the fog of the border screen it comes from (the nearest pixel of the map).
+    auto borderVis = [&](int bx, int by) -> int {
+        const int cx = std::clamp(bx, 0, 16 * ROOM_W - 1), cy = std::clamp(by, 0, 8 * ROOM_H - 1);
+        const int brx = cx / ROOM_W, bry = cy / ROOM_H, room = bry * 16 + brx;
+        return visOf(room, roomView(room), cx - brx * ROOM_W, cy - bry * ROOM_H, cx, cy);
+    };
     static thread_local std::vector<uint32_t> scratchTL;                 // (rows above the picture are only needed as terrain for the water: this thread's own)
     if (water && (int)scratchTL.size() < W) scratchTL.resize(W);
     std::vector<uint32_t>& scratch = scratchTL;
@@ -337,17 +358,7 @@ void Widescreen::drawWorld(Nes& nes, Canvas& out, int camX, int camY, int slot, 
                     const uint16_t pat = patBase + tile * 16 + (ly & 7);
                     const uint8_t lo = chr[pat - patBase], hi = chr[pat - patBase + 8];
                     for (int i = 0; i < n; i++) {
-                        int v = 256;                                         // how much terrain shows through
-                        if (!rv.disc) {
-                            if (useVis) {                                    // (the glow of a room only changes with the explored rooms or the screen data: worked out once per pixel)
-                                std::vector<uint16_t>& vm = fogVisMap[room];
-                                if (vm.empty()) vm.assign((size_t)ROOM_W * ROOM_H, 0xFFFF);
-                                uint16_t& cv = vm[(size_t)ly * ROOM_W + lx + i];
-                                if (cv == 0xFFFF) cv = (uint16_t)seamVis(rv, room, lx + i, ly, wx + i, wy);
-                                v = cv;
-                            } else v = seamVis(rv, room, lx + i, ly, wx + i, wy);
-                        }
-                        if (rv.reveal) v = std::max(v, revealAmount(lx + i, ly));
+                        int v = visOf(room, rv, lx + i, ly, wx + i, wy);        // how much terrain shows through
                         if (v == 0) { row[x + i] = scaleColor(fogPixel(wx + i, wy), fogScale); if (water) raw[(size_t)(y + M) * W + x + i] = plain(rv.tiles, rv.outer, rv.inner, lx + i, ly); continue; }
                         const int bit = 7 - ((lx & 7) + i);
                         const int c = ((lo >> bit) & 1) | (((hi >> bit) & 1) << 1);
@@ -388,7 +399,8 @@ void Widescreen::drawWorld(Nes& nes, Canvas& out, int camX, int camY, int slot, 
                     for (int i = 0; i < n; i++) {
                         const int bit = 7 - ((wx + i) & 7), c = ((lo >> bit) & 1) | (((hi >> bit) & 1) << 1);
                         const uint32_t col = bg[c ? (pal << 2) | c : 0];
-                        const int v = beyond::fadeVis(wx + i, wy, fade);
+                        int v = beyond::fadeVis(wx + i, wy, fade);
+                        if (v) v = v * borderVis(wx + i, wy) >> 8;                   // (and its fog: a screen not explored yet shows nothing beyond its border)
                         if (water) { raw[(size_t)(y + M) * W + x + i] = v ? col : 0; vis[(size_t)(y + M) * W + x + i] = (uint16_t)v; }     // (fully faded: no terrain, no water work)
                         row[x + i] = v >= 256 ? col : mixColor(scaleColor(fogPixel(wx + i, wy), fogScale), col, v);
                     }

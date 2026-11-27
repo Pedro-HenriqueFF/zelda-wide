@@ -69,14 +69,14 @@ void section04(Ctx& t) {
 void section05(Ctx& t) {
     SECTION_BINDINGS
     // 5. World edge: beyond room $00's left edge the mountains/trees go on (and fade into the deep fog); without the extension the deep fog is all there is, with F2 on or off.
-    setState(5, 0x00); frames(ws, 2, aspect);
+    setState(5, 0x00); ws.fadeMode = 1; frames(ws, 2, aspect);                                    // (land fades over a screen in setting 1: the pixel is 136 px beyond the edge)
     CHECK(px(0, 100) != 0xFF000000 && !isFog(px(0, 100)));
     ws.extendWorld = false; frames(ws, 2, aspect);
     CHECK(px(0, 100) != 0xFF000000 && isFog(px(0, 100)));
     CHECK(isFog(px(0, HUD_H)) && isFog(px(3, HUD_H + 1)));      // (the corner of the playfield, below the status bar)
     ws.fog = false; frames(ws, 2, aspect);
     CHECK(isFog(px(0, 100)));
-    ws.fog = true; ws.extendWorld = true; frames(ws, 2, aspect);
+    ws.fog = true; ws.extendWorld = true; ws.fadeMode = 0; frames(ws, 2, aspect);
     // The Delete key's dump of the map's borders: 16 + 16 + 8 + 8 screens, each with the ids of its three outermost tile lines.
     {
         const char* path = "zw_edge_dump_test.txt";        // (a relative name: Windows has no /tmp)

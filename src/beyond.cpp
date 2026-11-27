@@ -28,13 +28,25 @@ const char* fadeName(int mode) {
     return names[mode < 0 || mode >= kFadeModes ? 1 : mode];
 }
 
+namespace {
+// The land's fade length at a pixel: longer where the sea begins beside it (north: from screen column 14; south: from column 4, the hand-made rooms).
+float landReach(const Fade& f, int wx, int wy) {
+    float a = 1e9f;                                            // distance to the seam in pixels
+    if (wy < 0 && wx < 14 * 256) a = (float)(14 * 256 - wx);
+    else if (wy >= kMapTilesH * 8 && wx < kPatchFirstCol * 256) a = (float)(kPatchFirstCol * 256 - wx);
+    if (a >= kSeamWidth) return f.land;
+    const float u = a / kSeamWidth, reach = std::max(f.land, kSeamReach);
+    return f.land + (reach - f.land) * std::sqrt(1.f - u * u);
+}
+}
+
 int fadeVis(int wx, int wy, const Fade& f) {
     const Zone z = zoneOf(wx >> 3, wy >> 3);
     if (z == Zone::Inside || f.land <= 0.f || f.sea <= 0.f) return 256;
     const float dx = wx < 0 ? (float)-wx : wx >= kMapTilesW * 8 ? (float)(wx - kMapTilesW * 8 + 1) : 0.f;
     const float dy = wy < 0 ? (float)-wy : wy >= kMapTilesH * 8 ? (float)(wy - kMapTilesH * 8 + 1) : 0.f;
     const float d = std::sqrt((dx / 256.f) * (dx / 256.f) + (dy / 176.f) * (dy / 176.f));    // distance in screens
-    const float t = std::min(1.f, d / (z == Zone::Extrude ? f.land : f.sea));
+    const float t = std::min(1.f, d / (z == Zone::Extrude ? landReach(f, wx, wy) : f.sea));
     return (int)(256.f * (1.f - t * t * (3.f - 2.f * t)) + 0.5f);
 }
 
@@ -71,14 +83,15 @@ bool parse(const std::string& text, File& out, std::string& err) {
         const int n = lines[i].first; std::istringstream ls(lines[i].second); std::string cmd; ls >> cmd;
         if (cmd == "legend") {
             std::string ch, eq, t; ls >> ch >> eq;
-            if (ch.size() != 1 || eq != "=") return fail(n, "expected: legend X = id [id id id] pal P");
-            std::vector<int> ids; int pal = -1; bool gotPal = false;
+            if (ch.size() != 1 || eq != "=") return fail(n, "expected: legend X = (id | id id id id | sq NN) pal P");
+            std::vector<int> ids; int pal = -1, sq = -1; bool gotPal = false;
             while (ls >> t) {
+                if (t == "sq" && ids.empty() && sq < 0) { std::string q; int v; if (!(ls >> q) || !hexByte(q, v) || v >= kSquareCount) return fail(n, "sq needs a square number 00-37 (hex)"); sq = v; continue; }
                 if (t == "pal") { std::string p; if (!(ls >> p) || p.size() != 1 || p[0] < '0' || p[0] > '3') return fail(n, "pal needs 0-3"); pal = p[0] - '0'; gotPal = true; break; }
                 int v; if (!hexByte(t, v)) return fail(n, "bad tile id '" + t + "' (hex, 00-FF)"); ids.push_back(v);
             }
-            if (!gotPal || (ids.size() != 1 && ids.size() != 4)) return fail(n, "expected 1 or 4 tile ids, then pal 0-3");
-            Cell c; c.pal = (uint8_t)pal; for (int k = 0; k < 4; k++) c.id[k] = (uint8_t)ids[ids.size() == 1 ? 0 : k];
+            if (!gotPal || (sq >= 0 ? !ids.empty() : (ids.size() != 1 && ids.size() != 4))) return fail(n, "expected: legend X = (1 or 4 tile ids | sq NN) pal 0-3");
+            Cell c; c.pal = (uint8_t)pal; c.sq = sq; if (sq < 0) for (int k = 0; k < 4; k++) c.id[k] = (uint8_t)ids[ids.size() == 1 ? 0 : k];
             f.legend[ch[0]] = c;
         } else if (cmd == "below") {
             std::string room, kw, cnt; ls >> room >> kw >> cnt;
@@ -116,6 +129,13 @@ std::string templateText() {
 "#   legend T = C4 C6 C5 C7 pal 3      trees\n"
 "# Tile ids seen on the map: water interior 90 (even row) / 95 (odd row), left shore 8E, right shore 92, top edge 8F, top corners 8D / 91,\n"
 "# bottom edge 94 / 96 / 98; ground 26; mountain wall D8 DA D9 DB; scalloped mountain top CE D0 CF D1; trees C4-C7.\n"
+"#\n"
+"# The game's own squares: instead of four tile ids, \"sq NN\" (hex, 00-37) takes the square the game's room layouts use, e.g.\n"
+"#   legend W = sq 05 pal 3\n"
+"# The Delete key writes squares_sheet.bmp (every square drawn with the current palettes; four blocks = palettes 0, 1, 2, 3 from top to bottom;\n"
+"# each square has its number under it) and squares.txt (the tile ids). Press it on the overworld. By their tiles (check them in the sheet):\n"
+"#   05 water, 06 / 07 / 08 / 09 water top / bottom / left / right edge, 15 / 16 / 17 / 18 water corners (top-left, top-right, bottom-left,\n"
+"#   bottom-right), 04 an inner water corner, 0E ground, 19 trees, 1A scalloped mountain top, 1B mountain wall, 0A ladder, 0B dock.\n"
 "#\n"
 "# A patch: the room it hangs under, the number of rows (squares, 1-20), then that many lines of exactly 16 characters.\n"
 "# Example (half a screen of ground under room 75 with the river going on into the sea; delete the # signs to try it):\n"

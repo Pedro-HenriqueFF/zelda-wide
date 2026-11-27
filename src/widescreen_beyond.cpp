@@ -131,7 +131,11 @@ void Widescreen::ensureBeyond(Nes& nes) {
             const int pi = tx / 32 - beyond::kPatchFirstCol, sq = (ty - GH) >> 1;
             if (sq < beyondFile.rows[pi]) {
                 const auto it = beyondFile.legend.find(beyondFile.grid[pi][(size_t)sq * beyond::kPatchCols + (tx % 32) / 2]);
-                if (it != beyondFile.legend.end()) t = (uint16_t)(it->second.id[(ty & 1) * 2 + (tx & 1)] | (it->second.pal << 8));
+                if (it != beyondFile.legend.end()) {
+                    const beyond::Cell& cell = it->second; uint8_t q[4];
+                    if (cell.sq >= 0) { if (map.squareTiles(cell.sq, q)) t = (uint16_t)(q[(tx & 1) * 2 + (ty & 1)] | (cell.pal << 8)); }      // (the game's order is column by column)
+                    else t = (uint16_t)(cell.id[(ty & 1) * 2 + (tx & 1)] | (cell.pal << 8));
+                }
             }
         }
         const size_t i = (size_t)(ty + kRingT) * RW + tx + kRingL;
@@ -152,4 +156,55 @@ void Widescreen::ensureBeyond(Nes& nes) {
     }
     for (int i = 0; i < RW * RH; i++) if (ringTile[i] != 0xFFFF) ringKind[i] = (uint8_t)(wd::tileKind((uint8_t)ringTile[i], open[(uint8_t)ringTile[i]]) | (big[i] ? kBig : 0));
     ringReady = true;
+}
+
+namespace {
+const char* kGlyph[16][5] = {{"###", "# #", "# #", "# #", "###"}, {" # ", "## ", " # ", " # ", "###"}, {"###", "  #", "###", "#  ", "###"}, {"###", "  #", "###", "  #", "###"},
+                             {"# #", "# #", "###", "  #", "  #"}, {"###", "#  ", "###", "  #", "###"}, {"###", "#  ", "###", "# #", "###"}, {"###", "  #", "  #", "  #", "  #"},
+                             {"###", "# #", "###", "# #", "###"}, {"###", "# #", "###", "  #", "###"}, {"###", "# #", "###", "# #", "# #"}, {"## ", "# #", "## ", "# #", "## "},
+                             {"###", "#  ", "#  ", "#  ", "###"}, {"## ", "# #", "# #", "# #", "## "}, {"###", "#  ", "###", "#  ", "###"}, {"###", "#  ", "###", "#  ", "#  "}};
+
+bool writeBmp(const char* path, int w, int h, const std::vector<uint32_t>& px) {      // 24 bits, bottom-up
+    FILE* f = std::fopen(path, "wb"); if (!f) return false;
+    const int stride = (w * 3 + 3) & ~3, size = 54 + stride * h;
+    uint8_t hd[54] = {'B', 'M'};
+    auto put32 = [&](int o, uint32_t v) { for (int k = 0; k < 4; k++) hd[o + k] = (uint8_t)(v >> (8 * k)); };
+    put32(2, (uint32_t)size); put32(10, 54); put32(14, 40); put32(18, (uint32_t)w); put32(22, (uint32_t)h); hd[26] = 1; hd[28] = 24; put32(34, (uint32_t)(stride * h));
+    std::fwrite(hd, 1, 54, f);
+    std::vector<uint8_t> row((size_t)stride, 0);
+    for (int y = h - 1; y >= 0; y--) { for (int x = 0; x < w; x++) { const uint32_t c = px[(size_t)y * w + x]; row[x * 3] = (uint8_t)c; row[x * 3 + 1] = (uint8_t)(c >> 8); row[x * 3 + 2] = (uint8_t)(c >> 16); } std::fwrite(row.data(), 1, row.size(), f); }
+    std::fclose(f); return true;
+}
+}
+
+// A catalogue to design with: every square of the game's room layouts (00-37), drawn with the current palettes (four blocks: palettes 0-3), labelled with
+// its number, and the same as text. A "legend X = sq NN pal P" line in the hand-made rooms file uses one.
+bool Widescreen::dumpSquares(const char* txtPath, const char* bmpPath) {
+    if (!fxNes) return false;
+    Nes& nes = *fxNes;
+    FILE* f = std::fopen(txtPath, "w"); if (!f) return false;
+    std::fprintf(f, "the game's squares: number, then the 4 tiles in the game's order (top-left, bottom-left, top-right, bottom-right) and in the file's reading order (TL TR BL BR)\n");
+    constexpr int kScale = 3, kCellW = 16 * kScale + 6, kCellH = 16 * kScale + 14, kCols = 16, kRowsPerBlock = 4, kBlockH = kRowsPerBlock * kCellH + 10;
+    const int W = kCols * kCellW + 6, H = 4 * kBlockH;
+    std::vector<uint32_t> img((size_t)W * H, 0xFF303030);
+    uint32_t bgc[16]; for (int i = 0; i < 16; i++) bgc[i] = Ppu::nesColor(nes.ppu.palette[(i & 3) ? i : 0]);
+    const uint16_t patBase = (nes.ppu.lineCtrl[100] & 0x10) ? 0x1000 : 0;
+    for (int idx = 0; idx < beyond::kSquareCount; idx++) {
+        uint8_t q[4]; if (!map.squareTiles(idx, q)) continue;
+        std::fprintf(f, "%02X: %02X %02X %02X %02X | %02X %02X %02X %02X\n", idx, q[0], q[1], q[2], q[3], q[0], q[2], q[1], q[3]);
+        for (int pal = 0; pal < 4; pal++) {
+            const int ox = 3 + (idx % kCols) * kCellW, oy = pal * kBlockH + 4 + (idx / kCols) * kCellH;
+            for (int py = 0; py < 16 * kScale; py++) for (int pxl = 0; pxl < 16 * kScale; pxl++) {
+                const int sx = pxl / kScale, sy = py / kScale, tile = q[(sx >> 3) * 2 + (sy >> 3)];
+                const uint16_t pat = (uint16_t)(patBase + tile * 16 + (sy & 7));
+                const int bit = 7 - (sx & 7), c = ((nes.cart.ppuRead(pat) >> bit) & 1) | (((nes.cart.ppuRead((uint16_t)(pat + 8)) >> bit) & 1) << 1);
+                img[(size_t)(oy + py) * W + ox + pxl] = bgc[c ? (pal << 2) | c : 0];
+            }
+            for (int d = 0; d < 2; d++) for (int gy = 0; gy < 5; gy++) for (int gx = 0; gx < 3; gx++)       // the number under the square (3 x 5 font, 2 x)
+                if (kGlyph[(idx >> (4 * (1 - d))) & 15][gy][gx] == '#')
+                    for (int yy = 0; yy < 2; yy++) for (int xx = 0; xx < 2; xx++) img[(size_t)(oy + 16 * kScale + 2 + gy * 2 + yy) * W + ox + 4 + d * 8 + gx * 2 + xx] = 0xFFFFFFFF;
+        }
+    }
+    std::fclose(f);
+    return writeBmp(bmpPath, W, H, img);
 }

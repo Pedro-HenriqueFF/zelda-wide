@@ -72,6 +72,17 @@ void OverworldMap::initWithOffsets(const std::vector<uint8_t>& image, size_t lay
     for (int i = 0; i < 16; i++) heapOff[i] = heaps[i];
 }
 
+bool OverworldMap::squareTiles(int idx, uint8_t out[4]) const {
+    if (!prg || idx < 0 || idx >= kPrimaryCount || primaryOff + idx >= prg->size()) return false;
+    const std::vector<uint8_t>& rom = *prg;
+    uint8_t primary = rom[primaryOff + idx];
+    if (primary >= 0xE5 && primary <= 0xEA) primary = kTileObjectPrimary[primary - 0xE5];
+    if (idx >= 0x10) { for (int k = 0; k < 4; k++) out[k] = (uint8_t)(primary + k); return true; }      // "type 1": four consecutive tiles
+    if (secondaryOff + (size_t)idx * 4 + 3 >= rom.size()) return false;
+    for (int k = 0; k < 4; k++) out[k] = rom[secondaryOff + idx * 4 + k];                                 // "type 3": explicit tiles
+    return true;
+}
+
 void OverworldMap::decodeRoom(int layoutId, bool secretFound, uint8_t* out, uint8_t* secretOut) const {
     std::memset(out, 0, TILES);
     if (secretOut) std::memset(secretOut, 0, TILES);

@@ -20,7 +20,9 @@ void section35(Ctx& t) {
         CHECK_EQ(f.rows[1], 2); CHECK_EQ((int)f.grid[1][0], (int)'W'); CHECK_EQ((int)f.grid[1][16], (int)'~');
         CHECK(f.legend['W'].id[0] == 0x8E && f.legend['W'].id[3] == 0x8E && f.legend['W'].pal == 2);
         CHECK(f.legend['X'].id[1] == 0xDA && f.legend['X'].id[2] == 0xD9 && f.legend['X'].pal == 1);
-        const char* bad[] = {"frob\n", "legend ab = 26 pal 0\n", "legend Q = 26 27 pal 0\n", "legend Q = 26 pal 4\n", "legend Q = 1FF pal 0\n", "legend Q = 26\n",
+        CHECK(beyond::parse("legend Q = sq 05 pal 2\nlegend R = sq 37 pal 0\n", f, err) && f.legend['Q'].sq == 5 && f.legend['Q'].pal == 2 && f.legend['R'].sq == 0x37 && f.legend['M'].sq == -1);
+        CHECK(beyond::parse("legend W = 8E pal 2\nlegend X = D8 DA D9 DB pal 1\nbelow 75 rows 2\nW~..XXXXMMMMTTTT\n~~~~~~~~~~~~~~~~\n", f, err));
+        const char* bad[] = {"legend Q = sq 38 pal 2\n", "legend Q = sq ZZ pal 2\n", "legend Q = sq 05 26 pal 2\n", "legend Q = sq pal 2\n", "frob\n", "legend ab = 26 pal 0\n", "legend Q = 26 27 pal 0\n", "legend Q = 26 pal 4\n", "legend Q = 1FF pal 0\n", "legend Q = 26\n",
                              "below 73 rows 1\n................\n", "below 75 rows 1\n.....\n", "below 75 rows 1\n????????????????\n", "below 75 rows 3\n................\n",
                              "below 75 rows 21\n", "below 7C rows 1\n................\n"};
         for (const char* b : bad) { beyond::File g = f; std::string e; CHECK(!beyond::parse(b, g, e) && !e.empty() && g.rows == f.rows && g.legend.size() == f.legend.size()); }
@@ -43,6 +45,12 @@ void section35(Ctx& t) {
         CHECK(mono);
         CHECK(fv(4096 + 300, 1408 + 200) < fv(4096 + 300, 600));                                                                    // (a corner is farther than the side)
         CHECK(fv(300, -100) < fv(300, -20));                                                                                         // north
+        // the seam: next to the sea the land's fog curves outwards, so the side of the mountains by the water stays a little visible
+        const beyond::Fade fm = beyond::fadeFor(0);
+        CHECK(beyond::fadeVis(14 * 256 - 10, -100, fm) > beyond::fadeVis(14 * 256 - 600, -100, fm) && beyond::fadeVis(14 * 256 - 600, -100, fm) == beyond::fadeVis(2000, -100, fm));      // north seam (column 14)
+        CHECK(beyond::fadeVis(4 * 256 - 10, 1408 + 100, fm) > beyond::fadeVis(4 * 256 - 600, 1408 + 100, fm) && beyond::fadeVis(4 * 256 - 600, 1408 + 100, fm) == beyond::fadeVis(100, 1408 + 100, fm));      // south seam (column 4)
+        CHECK(beyond::fadeVis(14 * 256 + 10, -100, fm) == beyond::fadeVis(14 * 256 + 200, -100, fm));                                                                                       // (the sea side does not change)
+        CHECK(beyond::fadeVis(14 * 256 - 10, -100, beyond::fadeFor(2)) == 256);
         // the three configurations: land 0.5 / 1 screens, sea 3.5, and none
         const beyond::Fade f0 = beyond::fadeFor(0), f2 = beyond::fadeFor(2);
         CHECK(beyond::fadeVis(-130, 500, f0) == 0 && beyond::fadeVis(-130, 500, f1) > 0 && beyond::fadeVis(-130, 500, f2) == 256);
@@ -54,6 +62,7 @@ void section35(Ctx& t) {
     auto outerOf = [&](int room) { return (int)(nes->cart.cpuRead((uint16_t)(kAttrsA + room)) & 3); };
     auto w_h = std::make_unique<Widescreen>(); Widescreen& w = *w_h; w.init(*nes, err); w.unfogAnim = false; w.cloudShadow = false; w.lighting = false;
     w.fxNes = nes.get(); w.fxRoom = 0; w.fxSlot = 0; w.fxOx = 0; w.fxOy = 0;
+    CHECK_EQ(w.fadeMode, 0);                                                                            // (the default: land 0.5 + sea 3.5 screens)
     w.ensureBeyond(*nes);
     auto ringId = [&](int tx, int ty) { const uint16_t v = w.ringTileAt(tx, ty); return v == 0xFFFF ? -1 : (int)(v & 0xFF); };
     auto ringPal = [&](int tx, int ty) { const uint16_t v = w.ringTileAt(tx, ty); return v == 0xFFFF ? -1 : (int)(v >> 8); };
@@ -92,6 +101,22 @@ void section35(Ctx& t) {
         w.ensureWaterWorld();
         CHECK(w.wwKind.size() == (size_t)GW * GH && (w.gridKind(GW + 1, 5) & kWater) && (w.gridKind(100, 100) == w.wwKind[(size_t)100 * GW + 100]) && w.gridKind(-kRingL - 5, 5, &known) == 0 && !known);
     }
+    // 35g. The game's own squares in the hand-made rooms, and the catalogue sheet.
+    {
+        uint8_t q[4], s5[4], g[4];
+        CHECK(w.overworldMap().squareTiles(0x1B, q) && q[1] == q[0] + 1 && q[2] == q[0] + 2 && q[3] == q[0] + 3);                                       // (a "type 1" square: four consecutive tiles)
+        CHECK(!w.overworldMap().squareTiles(0x38, q) && !w.overworldMap().squareTiles(-1, q) && w.overworldMap().squareTiles(5, s5) && w.overworldMap().squareTiles(0x1B, g));
+        CHECK(w.loadBeyond("legend S = sq 05 pal 2\nlegend G = sq 1B pal 1\nbelow 74 rows 1\nSSGGSSGGSSGGSSGG\n").empty()); w.ensureBeyond(*nes);
+        CHECK(ringId(128, 176) == s5[0] && ringId(128, 177) == s5[1] && ringId(129, 176) == s5[2] && ringId(129, 177) == s5[3] && ringPal(128, 176) == 2);      // (the game's order: column by column)
+        CHECK(ringId(132, 176) == g[0] && ringId(132, 177) == g[1] && ringId(133, 176) == g[2] && ringId(133, 177) == g[3] && ringPal(132, 176) == 1);      // (a square with four different tiles: top-left, bottom-left, top-right, bottom-right)
+        const char* tp = "zw_squares_test.txt"; const char* bp = "zw_squares_test.bmp";
+        CHECK(w.dumpSquares(tp, bp));
+        int lines = 0; { FILE* f = std::fopen(tp, "r"); CHECK(f != nullptr); if (f) { int ch; while ((ch = std::fgetc(f)) != EOF) lines += ch == '\n'; std::fclose(f); } }
+        CHECK_EQ(lines, 1 + beyond::kSquareCount);
+        { FILE* f = std::fopen(bp, "rb"); CHECK(f != nullptr); if (f) { uint8_t h[54] = {}; CHECK(std::fread(h, 1, 54, f) == 54 && h[0] == 'B' && h[1] == 'M' && h[28] == 24 && h[18] + h[19] * 256 > 500 && h[22] + h[23] * 256 > 500); std::fclose(f); } }
+        std::remove(tp); std::remove(bp);
+        CHECK(w.loadBeyond("").empty());                                                                                                      // (back to no hand-made rooms)
+    }
     // 35e. Waves and reflections on the extended sea: the water pass sees the sea beyond the map as big water.
     {
         w.fog = false; w.setWater(true); w.wwReady = false;
@@ -106,7 +131,8 @@ void section35(Ctx& t) {
     }
     // 35f. The picture: the extension replaces the fog beyond the border and only there.
     {
-        const bool fog0 = ws.fog, cloud0 = ws.cloudShadow, light0 = ws.lighting;
+        const bool fog0 = ws.fog, cloud0 = ws.cloudShadow, light0 = ws.lighting; const int mode0 = ws.fadeMode;
+        ws.fadeMode = 1;
         ws.fog = false; ws.cloudShadow = false; ws.lighting = false;                                      // (what is left of the fog is only what lies beyond the map)
         auto shot = [&](bool ext) { ws.extendWorld = ext; frames(ws, 3, aspect); return c.pixels; };
         setState(5, 0x7F); const std::vector<uint32_t> off = shot(false), on = shot(true);
@@ -124,7 +150,16 @@ void section35(Ctx& t) {
         uint32_t px3[3];
         for (int mode = 0; mode < 3; mode++) { ws.fadeMode = mode; frames(ws, 3, aspect); px3[mode] = c.pixels[row]; }
         CHECK(isFog(px3[0]) && px3[1] != off0[row] && px3[2] != off0[row] && px3[2] != px3[1]);
-        ws.fadeMode = 1;
+        // the extension follows the fog of the screen it comes from: Link at the top of room 01, room 00 (beside it) not explored: its strip above the map stays fog
+        const bool anim0 = ws.unfogAnim; ws.unfogAnim = false; ws.fog = true; ws.fadeMode = 1;
+        setState(5, 0x01); nes->ram[kObjX] = 0x10; nes->ram[kObjY] = 0x3D;
+        auto strips = [&](bool ext) { ws.extendWorld = ext; ws.setDiscoveredForTest(ws.fxSlot, 0, false); frames(ws, 40, aspect); return c.pixels; };
+        const std::vector<uint32_t> noExt = strips(false), withExt = strips(true);
+        int diff00 = 0, diff01 = 0;
+        for (int y = 0; y < c.h; y++) { for (int x = 20; x < 200; x++) diff00 += !isFog(withExt[(size_t)y * c.w + x]) && isFog(noExt[(size_t)y * c.w + x]); for (int x = 300; x < 480; x++) diff01 += !isFog(withExt[(size_t)y * c.w + x]) && isFog(noExt[(size_t)y * c.w + x]); }       // (pixels that the extension brings out of the fog)
+        CHECK(diff01 > 200 && diff00 == 0);                                                              // (room 01 explored: its strip shows; room 00 not: nothing)
+        ws.unfogAnim = anim0; ws.extendWorld = true;
+        ws.fadeMode = mode0;
         ws.extendWorld = true; ws.fog = fog0; ws.cloudShadow = cloud0; ws.lighting = light0;
     }
 }

@@ -7,11 +7,17 @@
 # border rooms in edge_dump.txt: rooms 74-78 use palettes 2 and 3). Tile ids are hex. Do not use '#' as a character.
 # Built in (you can redefine them):
    legend ~ = 90 90 95 95 pal 3      sea
+   legend - = sq 5 pal 2            green sea
    legend . = 26 pal 3               ground
+   legend 1 = sq 30 pal 2            green bottom-left shore
+   legend 2 = sq 31 pal 2            green bottom-right shore
    legend m = D8 DA D9 DB pal 3      brown mountain wall
    legend M = D8 DA D9 DB pal 2      green mountain wall
    legend t = C4 C6 C5 C7 pal 3      brown trees
    legend T = C4 C6 C5 C7 pal 2      green trees
+   legend 6 = sq 06 pal 2            green up shore
+   legend 8 = sq 08 pal 2            green left shore
+   legend Q = sq 15 pal 2            green top-left shore
 # Tile ids seen on the map: water interior 90 (even row) / 95 (odd row), left shore 8E, right shore 92, top edge 8F, top corners 8D / 91,
 # bottom edge 94 / 96 / 98; ground 26; mountain wall D8 DA D9 DB; scalloped mountain top CE D0 CF D1; trees C4-C7.
 #
@@ -19,31 +25,35 @@
 # Example (half a screen of ground under room 75 with the river going on into the sea; delete the # signs to try it):
 #
 
-below 74 rows 8
+below 74 rows 10
 MMMMMMMMMMMMMMMM
 MMMMMMMMMMMMMMMM
 MMMMMMMMMMMMMMMM
 MMM.............
 MM..............
-M.....~~~~~~~~~~
-......~~~~~~~~~~
-......~~~~~~~~~~
+M.....Q666666666
+......8---------
+.....2-------~~~
+66666-----~~~~~~
+--------~~~~~~~~
 
-below 75 rows 6
-MMMMM~~MMMMMMMMM
-MMMMM~~MMMMMMMMM
-MMMMM~~MMMMMMMMM
-.....~~.........
-.....~~.........
-~~~~~~~~~~~~~~~~
+below 75 rows 7
+MMMMM--MMMMMMMMM
+MMMMM--MMMMMMMMM
+MMMMM--MMMMMMMMM
+.....--.........
+.....--1........
+66666---66666666
+----------------
 
-below 76 rows 6
+below 76 rows 7
 MMMMMMMMMMMMMMMM
 MMMMMMMMMMMMMMMM
 MMMMMMMMMMMMMMMM
 ..MMMMMMM.......
 ....MMM.........
-~~~~~~~~~~~~~~~~
+6666666666666666
+----------------
 
 below 77 rows 6
 MMMMMMMMMMMMMMMM

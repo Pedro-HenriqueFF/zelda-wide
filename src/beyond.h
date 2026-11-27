@@ -17,15 +17,18 @@ enum class Zone : uint8_t { Inside, Extrude, Sea, Custom };
 // (mountains, trees); Sea = water; Custom = below rooms $74..$7B: the hand-made patch, and sea where the patch ends.
 Zone zoneOf(int tx, int ty);
 // How far the extension reaches before it is all fog, in screens (land = the repeated mountains/trees, sea = the sea and the custom rooms);
-// 0 = no fade at all (the extension goes on to the end of the band of tiles).
+// Next to a sea the land's reach is longer (kSeamReach screens at the seam, a quarter ellipse back to the land's own over kSeamWidth px), so the side of
+// the mountains by the water stays a little visible. 0 = no fade at all (the extension goes on to the end of the band of tiles).
 struct Fade { float land, sea; };
 constexpr int kFadeModes = 3;
+constexpr float kSeamReach = 1.5f, kSeamWidth = 256.f;
 Fade fadeFor(int mode);                // 0: land 0.5 + sea 3.5, 1: land 1 + sea 3.5, 2: no fade
 const char* fadeName(int mode);
 // Terrain share (0..256) of a pixel beyond the map: 256 at the border, 0 once the fade length is passed.
 int fadeVis(int wx, int wy, const Fade& f);
 
-struct Cell { uint8_t id[4] = {0x26, 0x26, 0x26, 0x26}; uint8_t pal = 0; };   // a square's four tiles: top-left, top-right, bottom-left, bottom-right
+struct Cell { uint8_t id[4] = {0x26, 0x26, 0x26, 0x26}; uint8_t pal = 0; int sq = -1; };   // a square's four tiles: top-left, top-right, bottom-left, bottom-right; sq >= 0: the game's own square number instead (looked up in the ROM)
+constexpr int kSquareCount = 0x38;                              // the game's squares 00..37
 struct File {
     std::map<char, Cell> legend;                              // built-in entries, replaced by the file's
     std::array<int, kPatchCount> rows{};                      // squares tall (0 = no patch: sea)

@@ -34,6 +34,10 @@ public:
 
     bool ready() const { return prg != nullptr; }
 
+    // The four tiles of one of the game's squares (room layouts are made of them), idx 0..$37, in the game's order: top-left, bottom-left,
+    // top-right, bottom-right. False when idx is out of range or the tables are not in the PRG.
+    bool squareTiles(int idx, uint8_t out[4]) const;
+
 private:
     const std::vector<uint8_t>* prg = nullptr;
     size_t layoutsOff = 0, primaryOff = 0, secondaryOff = 0;

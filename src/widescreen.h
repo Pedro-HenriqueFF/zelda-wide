@@ -106,7 +106,7 @@ public:
     std::vector<uint8_t> wwKind;                                                // per world tile (512 x 176): 1 water, 2 big body, 4 reflects whole
     bool wwReady = false, waterDone = false;                                    // waterDone: this picture's water was drawn by drawWorld (and the game's room by pass B)
     // The world beyond the map (widescreen_beyond.cpp): mountains/trees repeat outwards, sea goes on, hand-made rooms from <rom>.beyond.txt.
-    int fadeMode = 1;                                                           // B key: how far the extension reaches (beyond::fadeFor)
+    int fadeMode = 0;                                                           // B key: how far the extension reaches (beyond::fadeFor)
     bool extendWorld = true;                                                    // (tests of the older sections switch it off)
     beyond::File beyondFile = beyond::defaults(); unsigned beyondEpoch = 0;
     std::vector<uint16_t> ringTile; std::vector<uint8_t> ringKind;              // the band around the map (RW x RH tiles): id | palette << 8, water-pass flags
@@ -117,6 +117,9 @@ public:
     uint16_t ringTileAt(int gx, int gy) const;                                  // world tile coordinates; 0xFFFF = no data (inside the map or too far out)
     uint8_t gridKind(int gx, int gy, bool* valid = nullptr) const;              // the water pass's flags of a world tile: the map's grid, else the band
     bool dumpEdges(const char* path);
+    bool dumpSquares(const char* txtPath, const char* bmpPath);                 // (Delete key) the game's squares as a labelled picture and as text
+    const OverworldMap& overworldMap() const { return map; }                    // (tests)
+    void setDiscoveredForTest(int slot, int room, bool on) { if (on) fogBits[slot][room >> 3] |= (uint8_t)(1 << (room & 7)); else fogBits[slot][room >> 3] &= (uint8_t)~(1 << (room & 7)); }
     std::vector<uint32_t> wSrcBuf;                                              // waterPass: the picture as it was
     std::vector<int16_t> wAxis;                                                 // waterPass scratch (mirror axis per pixel)
     std::vector<uint8_t> wObjSkip, wLinkMark;                                   // (more waterPass scratch: kept between frames so their memory is reused, not given back and asked for again)

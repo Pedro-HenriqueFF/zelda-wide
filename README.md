@@ -10,7 +10,7 @@ A from-scratch NES emulator (6502, MMC1, PPU) with an SDL2 front-end, built to p
 > **You must supply your own ROM.** No game data is included or needed to build. Target ROM: `Legend of Zelda, The (U) (PRG0) [!].nes`.
 > This is an unofficial fan project, not affiliated with or endorsed by Nintendo.
 
-Current version: **milestone 114**. Playable start to finish except for sound (not implemented).
+Current version: **milestone 115**. Playable start to finish except for sound (not implemented).
 
 ## What it does
 
@@ -55,7 +55,7 @@ Game controllers work too (south button = B, east button = A).
 |-----|----------|
 | `F1` | day/night cycle and lights |
 | `F2` | fog of war (off = reveal the map) |
-| `B` | how far the world beyond the map reaches (3 fade settings) |
+| `B` | how far the world beyond the map reaches (3 fade settings; default land 0.5 + sea 3.5 screens) |
 | `F3` | widescreen on/off |
 | `F4` / `+` / `-` | zoom |
 | `F5` | reset the game |
