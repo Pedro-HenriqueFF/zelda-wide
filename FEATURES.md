@@ -25,7 +25,10 @@ In the overworld the camera is centred on Link and follows him. When the game re
 step forward at the end of a screen change) the camera eases over to him over a few frames. Scrolling to the next screen
 skips the game's own scroll animation. At the end of it the game puts Link about 16 pixels forward on the new screen, so
 instead of a jump the game pauses for a moment and Link walks those pixels at his normal pace with the camera following
-him (about a quarter of a second). Every other animation (walking out of a cave or dungeon, stairs, dungeon room changes)
+him (about a quarter of a second). His legs carry on the walk cycle he was in: the game's own two walking poses (in
+the direction he faces, shield included) alternate every 6 frames from where the counter stood, and the game goes on with
+the same step afterwards, so holding the direction key walks on without a hitch. While he attacks or is halted, or if the
+pose cannot be read from the game, his picture stays as it was. Every other animation (walking out of a cave or dungeon, stairs, dungeon room changes)
 plays normally.
 
 How much you see: by default 448 world pixels below the top (about 2.5 screens tall). `F4` steps through a few sizes
@@ -242,9 +245,9 @@ Up/down room changes scroll as smoothly as sideways ones.
 
 The game scrolls a dungeon room sideways 2 px every frame but up/down 8 px every 4th frame (22 jumps of a whole tile row, so it looks jerky and finishes sooner). With the widescreen on, the emulator's PPU eases the up/down scroll over each 8 px step at 2 px a frame, the speed of the sideways scroll, so the room moves continuously (the picture trails the game by at most 6 px, and the frozen sprites, light and glitter follow the same position). Only the play area moves (not the status bar), only in dungeons, and only for steps of exactly one tile row: any other jump of the scroll shows at once. `Widescreen::smoothScroll` turns it off.
 
-## 5. Neighbour screens running (`N`, experimental)
+## 5. Neighbour screens running (`N`, on by default)
 
-The NES game only simulates the screen Link is in. With `N` on, every screen next to Link (up to eight, diagonals included) gets a **shadow game**: a copy of the running game that walks into that screen using the game's own code and keeps running there, so the monsters, great fairies and items on the ground of the neighbouring screens move in the margins of the widescreen view. The overworld never stops: the shadows run through scrolls, caves and stairs (and the walk into a dungeon), and what Link left is still alive when he comes back.
+The NES game only simulates the screen Link is in. Unless switched off with `N`, every screen next to Link (up to eight, diagonals included) gets a **shadow game**: a copy of the running game that walks into that screen using the game's own code and keeps running there, so the monsters, great fairies and items on the ground of the neighbouring screens move in the margins of the widescreen view. The overworld never stops: the shadows run through scrolls, caves and stairs (and the walk into a dungeon), and what Link left is still alive when he comes back.
 
 - **How a shadow is made.** While the real game is in plain overworld play, each neighbour gets a copy of the game (its own RAM, cartridge RAM, CPU and a "lite" PPU that draws nothing). The stand-in Link is put at the edge facing the target screen and the game is put into its leave-the-room mode; the game then scrolls, loads the screen and spawns its monsters by itself (a diagonal neighbour takes two such steps). The shadow is drawn from the moment it arrives, so its monsters appear with the game's normal spawn smoke at the game's own speed; it then runs in step with the real game, on the thread pool. Only the unseen walk to the screen is hurried (three frames per frame). Its random numbers are reseeded so that it does not move like the real game.
 - **Always running.** The shadows are stepped once per displayed frame in every game mode: while the camera glides, while Link walks into a screen, in caves and on stairs. They stand still only while the inventory or the pause is open (the game does too). Walking into a dungeon, they run through the walk and are dropped a couple of frames after the level starts loading (nothing of the overworld shows inside, and the game makes its monsters afresh when he comes out; the neighbours then get new shadows). New shadows can only be made from the real game in plain overworld play; the existing ones go on without it. All shadows are dropped when the overworld is gone (title, file select, game over, saving, the end).

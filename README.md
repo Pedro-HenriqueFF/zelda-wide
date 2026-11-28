@@ -10,14 +10,14 @@ A from-scratch NES emulator (6502, MMC1, PPU) with an SDL2 front-end, built to p
 > **You must supply your own ROM.** No game data is included or needed to build. Target ROM: `Legend of Zelda, The (U) (PRG0) [!].nes`.
 > This is an unofficial fan project, not affiliated with or endorsed by Nintendo.
 
-Current version: **milestone 116**. Playable start to finish except for sound (not implemented).
+Current version: **milestone 117**. Playable start to finish except for sound (not implemented).
 
 ## What it does
 
-- **Widescreen overworld** decoded straight from the ROM around the game's own picture, with a Link-centred camera, zoom and a glide between screens.
+- **Widescreen overworld** decoded straight from the ROM around the game's own picture, with a Link-centred camera, zoom and a glide between screens (Link keeps walking, legs and all).
 - **No black border:** mountains, trees and sea continue past the edge of the map and fade into the fog; the rooms below the map are hand-made (built in; an optional text file replaces them).
 - **Fog of war** and a minimap: unexplored screens fade into the fog, hidden secrets of explored screens are hinted at.
-- **Neighbour screens running** (experimental, `N`): monsters, fairies and items of the screens next to Link keep moving in the margins, glowing and glittering like on his own screen (every screen you can see, whatever the zoom). The overworld never stops: through scrolls, caves and stairs (and the walk into a dungeon), and what Link left (monsters, a dropped item, an armos that woke, a burning candle's glow) is still there when he comes back.
+- **Neighbour screens running** (on by default, `N` switches them off): monsters, fairies and items of the screens next to Link keep moving in the margins, glowing and glittering like on his own screen (every screen you can see, whatever the zoom). The overworld never stops: through scrolls, caves and stairs (and the walk into a dungeon), and what Link left (monsters, a dropped item, an armos that woke, a burning candle's glow) is still there when he comes back.
 - **Atmosphere:** day/night cycle with dynamic light, cloud shadows, water reflections and waves, torches and water in dungeons, mist in the Lost Woods.
 - **Quality of life:** transparent corner HUD, caves and the inventory in framed boxes, sword and sprites completed at the screen borders,
   smooth dungeon scrolling, no sprite flicker or slowdown in crowded rooms (the NES behaviour is one key away), saving with `F10`.
@@ -67,7 +67,7 @@ Game controllers work too (south button = B, east button = A).
 | `F11` | fullscreen |
 | `F12` | cloud shadows |
 | `End` / `Page Down` | water reflections / water waves |
-| `N` | neighbour screens running (experimental) |
+| `N` | neighbour screens running on/off (default on) |
 | `Insert` | the NES's own sprite limits and slowdown on/off |
 | `` ` `` | fast-forward while held |
 

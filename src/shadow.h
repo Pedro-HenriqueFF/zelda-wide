@@ -92,7 +92,7 @@ public:
     static constexpr int kKeepRadius = 2;          // shadows up to this many screens from Link go on (the 8 around him are started, the others only kept)
     static constexpr int kDropDelay = 2;           // updates the shadows stay after Link is inside a dungeon (the last pictures of the walk in)
     static constexpr int kBridgeHold = 4;         // updates the entered screen's shadow stays after the hand-off; it is drawn for the first pictures of play too (they are a frame or more behind the game and have no monsters yet)
-    bool enabled = false;
+    bool enabled = true;
     // Called once per real frame after it ran. Keeps the shadows going: new neighbours are made when the real game is in plain overworld play in a new room
     // (shadows that are still neighbours go on as they are, the others are dropped), the screen Link is leaving is captured as a shadow, the hand-off after a
     // scroll is carried out; all shadows are stepped (in parallel). Dropped in dungeons.

@@ -220,6 +220,15 @@ public:
     // those pixels with the camera following him, without running the emulator. Poll gliding() to know when to resume.
     void startGlide(Nes& nes);
     bool gliding() const { return glideActive; }
+    // Link's walk cycle during the glide: the game's own two poses (ObjAnimFrame 0/1, probed on a clone of the game by
+    // `probeLinkPoses`) shown in turn, the frame flipping every 6 glide frames like the game's ObjAnimCounter.
+    struct LinkPose { uint8_t tile[2] = {0, 0}, attr[2] = {0, 0}; int dx = 8, dy = 0; };   // dx/dy: the right sprite relative to the left
+    bool     glideAnimate = false;
+    LinkPose glidePose[2];
+    int      glideAnimC = 6, glideAnimF = 0;                  // frames until the next flip, the pose shown
+    static constexpr int kProbeMaxFrames = 150;               // the probe's clone plays at most this long to reach mode 5
+    bool probeLinkPoses(const Nes& nes);
+    static void glideAnimStep(int& counter, int& frame);      // one game frame of Link's animation counter (DEC; at 0 flip and reload 6)
     bool mazeFading() const { return mazePhase != 0; }                          // the mist closes, covers or lifts: the game waits (main.cpp)
     bool keepScroll(const Nes& nes) const;                                      // the scroll to the next screen stays the game's own (from a maze room into itself)
     bool mazeSeen(int slot, int room) const { return fogBits[slot][room >> 3] & (1 << (room & 7)); }   // on the map (a maze room: solved at least once)
@@ -340,7 +349,7 @@ private:
     void buildMenuOverlay(Nes& nes);
     void buildGameOverOverlay(Nes& nes);
     void drawWorld(Nes& nes, Canvas& out, int camX, int camY, int slot, const FlashEffect& fl);
-    void drawLinkSprites(Nes& nes, Canvas& out, const ViewSnapshot& v, int camX, int camY, int originX, int originY);
+    void drawLinkSprites(Nes& nes, Canvas& out, const ViewSnapshot& v, int camX, int camY, int originX, int originY, const LinkPose* pose = nullptr);
     void renderGlide(Nes& nes, double windowAspect, Canvas& out);
     ViewSnapshot capture(Nes& nes);
     bool nametableShowsRoom(Nes& nes, int room);

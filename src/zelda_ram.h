@@ -36,7 +36,7 @@ constexpr int kLastMonsterSlot = 12;                      // object slots 1-12 h
 constexpr uint16_t kObjShoveDir = 0xC0, kObjShoveDistance = 0xD3, kObjGridOffset = 0x394, kObjInvincibilityTimer = 0x4F0;   // (Variables.inc 54, 55, 103, 147)
 // Link's coordinates at the screen edge in each direction (PlayerScreenEdgeBounds, Z_07.asm 2831: up $3D, down $DD, left $00, right $F0).
 constexpr uint8_t kEdgeUp = 0x3D, kEdgeDown = 0xDD, kEdgeLeft = 0x00, kEdgeRight = 0xF0, kCenterX = 0x78, kCenterY = 0x8D;
-constexpr uint16_t kObjTimer = 0x28, kObjMovingLimit = 0x380, kObjPosFrac = 0x3A8, kObjQSpeedFrac = 0x3BC, kObjAnimCounter = 0x3D0, kObjAnimFrame = 0x3E4;   // per-slot arrays the boomerang uses (Variables.inc, ObjVars.inc)
+constexpr uint16_t kObjTimer = 0x28, kObjMovingLimit = 0x380, kObjPosFrac = 0x3A8, kObjQSpeedFrac = 0x3BC, kObjAnimCounter = 0x3D0, kObjAnimFrame = 0x3E4, kObjInputDir = 0x3F8;   // per-slot arrays the boomerang uses (Variables.inc, ObjVars.inc)
 constexpr int kSlotBoomerang = 0x0F;   // Link's boomerang (or food: state bit 7) lives in this weapon slot; weapons have no ObjType, ObjState != 0 means out (WieldBoomerang, Z_05.asm 2901; UpdateBoomerangOrFood, Z_07.asm 3763)
 constexpr uint16_t kObjDir = 0x98;       // facing: 1 right, 2 left, 4 down, 8 up
 constexpr uint8_t kModeSave = 0x0D;     // game mode: save (sub 0..2; sub 2 = done, back to the title)
@@ -48,6 +48,7 @@ inline bool isMazeRoom(int room) { return room == kForestMazeRoom || room == kMo
 constexpr uint8_t kModeTitle = 0, kModeFileSelect = 1, kModeLoad = 2, kModeUnfurl = 3, kModeEnter = 4, kModePlay = 5, kModeLeave = 6, kModeScroll = 7, kModeContinue = 8, kModeCellar = 9,
                   kModeLeaveCave = 0x0A, kModeCave = 0x0B, kModeShortcut = 0x0C, kModeStairs = 0x10, kModeDeath = 0x11, kModeEndLevel = 0x12;
 constexpr int kOamEntries = 64, kFirstObjectOam = 24;       // the PPU's 64 sprites; objects (monsters, items, weapons) use entries 24-63 (SpriteOffsets, Z_01.asm 5007)
+constexpr uint16_t kSpriteRam = 0x200;                     // the game's OAM buffer (Sprites := $200, Variables.inc 82; DMA'd to the PPU in the next NMI)
 constexpr int kLinkOam0 = 18, kLinkOam1 = 19;          // Link is drawn by two 8x16 sprites: OAM entries 18 and 19
 // The armos that hides a secret (Z_04.asm SecretArmosRoomIds / SecretArmosXs): the one in that room at this X and Y = $80.
 constexpr uint8_t kSecretArmosRoom[7] = {0x24, 0x0B, 0x1C, 0x22, 0x34, 0x3D, 0x4E}, kSecretArmosX[7] = {0xE0, 0xB0, 0xB0, 0x30, 0x40, 0x90, 0xA0}, kSecretArmosY = 0x80;

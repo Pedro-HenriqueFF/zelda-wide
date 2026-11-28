@@ -183,13 +183,21 @@ void Widescreen::drawSplashes(Nes& nes, Canvas& out, int roomX, int roomY, int m
     }
 }
 
-void Widescreen::drawLinkSprites(Nes& nes, Canvas& out, const ViewSnapshot& v, int camX, int camY, int originX, int originY) {
-    // Draws the sprites around Link (Link himself and anything attached to him) at an offset position.
+void Widescreen::drawLinkSprites(Nes& nes, Canvas& out, const ViewSnapshot& v, int camX, int camY, int originX, int originY, const LinkPose* pose) {
+    // Draws the sprites around Link (Link himself and anything attached to him) at an offset position. With `pose`, Link's own
+    // two sprites (OAM 18/19) are replaced by that pose, placed where the picture's left sprite is (the walk cycle of the glide).
     const FlashEffect noFlash;
+    if (pose && nes.ppu.oam[kLinkOam0 * 4] >= 0xEF) pose = nullptr;   // (Link is not drawn: nothing to anchor the pose on)
     for (int i = 0; i < kOamEntries; i++) {
         const uint8_t* o = &nes.ppu.oam[i * 4];
         if (o[0] >= 0xEF) continue;                                  // parked off screen
         const int sy = o[0] + 1, sx = o[3];
+        if (pose && (i == kLinkOam0 || i == kLinkOam1)) {
+            if (i == kLinkOam0)
+                for (int k = 0; k < 2; k++)
+                    drawSpriteAt(nes, out, pose->tile[k], pose->attr[k], sx + (k ? pose->dx : 0), sy + (k ? pose->dy : 0), originX - camX, topBand + originY - camY, topBand, noFlash, 0, 0);
+            continue;
+        }
         if (sx < v.linkX - 8 || sx > v.linkX + 16 || sy < v.linkY - 8 || sy > v.linkY + 16) continue;
         drawSpriteAt(nes, out, o[1], o[2], sx, sy, originX - camX, topBand + originY - camY, topBand, noFlash, 0, 0);
     }

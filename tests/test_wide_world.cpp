@@ -329,6 +329,73 @@ void section11(Ctx& t) {
         syncFb(*nes); g.render(*nes, aspect, c);
         CHECK_EQ(px(248 + 10, 67 + 5), 0xFF123456);
 
+        // Link's walk cycle in the glide: the legs keep the game's rhythm (counter 6, flip at 0) and the game continues with it.
+        {
+            int cnt = 3, fr = 0; std::vector<int> seq;
+            for (int k = 0; k < 14; k++) { Widescreen::glideAnimStep(cnt, fr); seq.push_back(fr); }
+            const std::vector<int> want = {0, 0, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0};
+            CHECK(seq == want); CHECK_EQ(cnt, 1);
+            auto w_h = std::make_unique<Widescreen>(); Widescreen& w = *w_h; w.init(*nes, err); w.unfogAnim = false; w.cloudShadow = false; w.lighting = false; w.viewHeight = 176; w.hudOverlay = false; w.caveBox = false;
+            nes->ppu.palette[0x11] = 0x30; nes->ppu.palette[0x12] = 0x16;
+            for (int i = 0; i < 64; i++) nes->ppu.oam[i * 4] = 0xFF;
+            setState(5, 0x23); nes->ram[0x70] = 240; frames(w, 3, aspect);
+            setState(5, 0x24); nes->ram[0x70] = 0;
+            for (int k = 0; k < 2; k++) { uint8_t* o = &nes->ppu.oam[(18 + k) * 4]; o[0] = 140; o[1] = 3; o[2] = 0; o[3] = (uint8_t)(k * 8); }   // Link's two sprites (OAM 18/19) at (0, 141) and (8, 141)
+            w.resetLag(); w.startGlide(*nes);
+            CHECK(w.gliding());
+            CHECK(!w.glideAnimate);                                    // (the fixture's game draws no Link: the picture's own pose stays)
+            w.glideAnimate = true; w.glideAnimF = 0; w.glideAnimC = 3;  // two poses of different colours
+            for (int f = 0; f < 2; f++) { w.glidePose[f].tile[0] = w.glidePose[f].tile[1] = (uint8_t)(3 + f); w.glidePose[f].attr[0] = w.glidePose[f].attr[1] = 0; w.glidePose[f].dx = 8; w.glidePose[f].dy = 0; }
+            std::vector<int> shown, shownRight; int n = 0;
+            while (w.gliding() && n < 100) {
+                syncFb(*nes); w.render(*nes, aspect, c); n++;
+                shown.push_back(px(248, 144) == Ppu::nesColor(0x30) ? 0 : px(248, 144) == Ppu::nesColor(0x16) ? 1 : -1);
+                shownRight.push_back(px(256, 144) == Ppu::nesColor(0x30) ? 0 : px(256, 144) == Ppu::nesColor(0x16) ? 1 : -1);
+            }
+            const std::vector<int> wantShown = {0, 0, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 1, 1};
+            CHECK(shown == wantShown); CHECK(shownRight == wantShown);   // both halves of Link change together
+            CHECK_EQ((int)nes->ram[zelda::kObjAnimFrame], 1); CHECK_EQ((int)nes->ram[zelda::kObjAnimCounter], 5);   // the game goes on with the same step
+            CHECK(!w.glideAnimate);
+        }
+        {   // probeLinkPoses on a tiny game. Its NMI draws Link's two sprites (left tile $10 + ObjAnimFrame, right $20 + frame, attributes 1/2)
+            // ONLY in mode 5, like the real game after a scroll: mode 4 is an init that leaves the sprites alone and ends 10 frames later.
+            std::vector<uint8_t> img(16 + 2 * 16384, 0xEA);
+            const uint8_t hdr[16] = {'N','E','S',0x1A, 2, 0, 0x10, 0};
+            std::memcpy(img.data(), hdr, 16);
+            const size_t last = 16 + 16384;
+            std::vector<uint8_t> code = {0x78, 0xA9, 0x80, 0x8D, 0x00, 0x20, 0x4C, 0x06, 0xC0};                          // reset: SEI, NMI on, loop at $C006
+            code.resize(0x20, 0xEA);                                                                                    // NMI at $C020:
+            const std::vector<uint8_t> nmi = {0xA5, 0x12, 0xC9, 0x05, 0xF0, 9,                                          //   mode 5: draw
+                0xC6, 0x60, 0xD0, 4, 0xA9, 0x05, 0x85, 0x12, 0x40,                                                      //   else: count $60 down, then mode 5; RTI
+                0xAD, 0xE4, 0x03, 0x18, 0x69, 0x10, 0x8D, 0x49, 0x02, 0x18, 0x69, 0x10, 0x8D, 0x4D, 0x02,               //   tiles $10+frame, $20+frame
+                0xA9, 0x01, 0x8D, 0x4A, 0x02, 0xA9, 0x02, 0x8D, 0x4E, 0x02, 0xA9, 0x64, 0x8D, 0x48, 0x02, 0x8D, 0x4C, 0x02,
+                0xA9, 0x50, 0x8D, 0x4B, 0x02, 0xA9, 0x58, 0x8D, 0x4F, 0x02, 0xA9, 0x02, 0x8D, 0x14, 0x40, 0x40};        //   attributes, y, x, DMA page 2, RTI
+            code.insert(code.end(), nmi.begin(), nmi.end());
+            std::memcpy(&img[last], code.data(), code.size());
+            auto vec = [&](uint16_t at, uint16_t val) { img[last + (at - 0xC000)] = val & 0xFF; img[last + (at - 0xC000) + 1] = (uint8_t)(val >> 8); };
+            vec(0xFFFA, 0xC020); vec(0xFFFC, 0xC000); vec(0xFFFE, 0xC000);
+            auto g_h = std::make_unique<Nes>(); Nes& g = *g_h; std::string e2;
+            CHECK(g.cart.loadFromMemory(img, e2)); g.reset();
+            auto pw_h = std::make_unique<Widescreen>(); Widescreen& pw = *pw_h;
+            g.ram[zelda::kGameMode] = 5; for (int f = 0; f < 4; f++) g.runFrame();   // (the game has drawn Link for a few frames: pose 0)
+            g.ram[zelda::kGameMode] = 4; g.ram[0x60] = 10;                 // a scroll has just ended: mode 4, which draws nothing, for 10 frames
+            g.ram[zelda::kObjState] = 0; g.ram[zelda::kObjAnimCounter] = 4; g.ram[zelda::kObjAnimFrame] = 0;
+            g.runFrame(); CHECK_EQ((int)g.ram[zelda::kGameMode], 4);
+            CHECK(pw.probeLinkPoses(g));
+            CHECK_EQ((int)pw.glidePose[0].tile[0], 0x10); CHECK_EQ((int)pw.glidePose[0].tile[1], 0x20);
+            CHECK_EQ((int)pw.glidePose[1].tile[0], 0x11); CHECK_EQ((int)pw.glidePose[1].tile[1], 0x21);   // (a probe that did not play on to mode 5 saw no change here)
+            CHECK_EQ((int)pw.glidePose[1].attr[0], 1); CHECK_EQ((int)pw.glidePose[1].attr[1], 2);
+            CHECK_EQ(pw.glidePose[1].dx, 8); CHECK_EQ(pw.glidePose[1].dy, 0);
+            CHECK_EQ(pw.glideAnimF, 0); CHECK_EQ(pw.glideAnimC, 4);   // the picture shows pose 0; the counter carries on from the game's
+            CHECK_EQ((int)g.ram[zelda::kObjAnimFrame], 0); CHECK_EQ((int)g.ram[zelda::kGameMode], 4);   // (the probe ran on a clone: the game itself is untouched)
+            g.ppu.oam[zelda::kLinkOam0 * 4 + 1] = 0x77;                // a picture that shows neither pose: the poses still alternate, from the game's own frame
+            g.ram[zelda::kObjAnimFrame] = 1;
+            CHECK(pw.probeLinkPoses(g)); CHECK_EQ(pw.glideAnimF, 1); CHECK_EQ((int)pw.glidePose[0].tile[0], 0x10);
+            g.ram[zelda::kObjState] = 0x10;                            // an attack keeps the picture's own pose
+            CHECK(!pw.probeLinkPoses(g));
+            g.ram[zelda::kObjState] = 0; g.ram[zelda::kGameMode] = 4; g.ram[0x60] = 0xFF;   // a game that never reaches play: no poses
+            CHECK(!pw.probeLinkPoses(g));
+        }
         // No glide when there is nothing to smooth, or when the camera hasn't been anywhere yet.
         auto g2_h = std::make_unique<Widescreen>(); Widescreen& g2 = *g2_h; g2.init(*nes, err); g2.unfogAnim = false; g2.cloudShadow = false; g2.lighting = false; g2.viewHeight = 176; g2.hudOverlay = false; g2.caveBox = false;
         g2.startGlide(*nes);
