@@ -10,7 +10,7 @@ A from-scratch NES emulator (6502, MMC1, PPU) with an SDL2 front-end, built to p
 > **You must supply your own ROM.** No game data is included or needed to build. Target ROM: `Legend of Zelda, The (U) (PRG0) [!].nes`.
 > This is an unofficial fan project, not affiliated with or endorsed by Nintendo.
 
-Current version: **milestone 117**. Playable start to finish except for sound (not implemented).
+Current version: **milestone 118**. Playable start to finish except for sound (not implemented).
 
 ## What it does
 

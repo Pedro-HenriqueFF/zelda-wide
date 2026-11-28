@@ -48,6 +48,7 @@ inline bool isMazeRoom(int room) { return room == kForestMazeRoom || room == kMo
 constexpr uint8_t kModeTitle = 0, kModeFileSelect = 1, kModeLoad = 2, kModeUnfurl = 3, kModeEnter = 4, kModePlay = 5, kModeLeave = 6, kModeScroll = 7, kModeContinue = 8, kModeCellar = 9,
                   kModeLeaveCave = 0x0A, kModeCave = 0x0B, kModeShortcut = 0x0C, kModeStairs = 0x10, kModeDeath = 0x11, kModeEndLevel = 0x12;
 constexpr int kOamEntries = 64, kFirstObjectOam = 24;       // the PPU's 64 sprites; objects (monsters, items, weapons) use entries 24-63 (SpriteOffsets, Z_01.asm 5007)
+constexpr double kLinkWalkSpeed = 1.5;                     // Link's pixels per frame: quarter speed $60 (InitLinkSpeed, Z_05.asm 7123; $30 on the mountain stairs)
 constexpr uint16_t kSpriteRam = 0x200;                     // the game's OAM buffer (Sprites := $200, Variables.inc 82; DMA'd to the PPU in the next NMI)
 constexpr int kLinkOam0 = 18, kLinkOam1 = 19;          // Link is drawn by two 8x16 sprites: OAM entries 18 and 19
 // The armos that hides a secret (Z_04.asm SecretArmosRoomIds / SecretArmosXs): the one in that room at this X and Y = $80.

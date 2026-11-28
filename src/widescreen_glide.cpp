@@ -12,7 +12,8 @@ bool Widescreen::probeLinkPoses(const Nes& nes) {
     // PPU) until normal play (mode 5), where Link is drawn from ObjAnimFrame every frame; then ObjAnimFrame is set to 0 and to 1
     // and Link's two sprites are read from the game's OAM buffer after one frame each.
     if (nes.ram[kObjState] != 0) return false;                       // (attacking, halted: the picture's own pose stays)
-    auto clone = std::make_unique<Nes>();
+    if (!probeNes) probeNes = std::make_unique<Nes>();                // (kept: allocating it again costs milliseconds in the frame of the screen change)
+    Nes* clone = probeNes.get();
     clone->cloneFrom(nes, true); clone->pad1 = 0;
     for (int f = 0; f < kProbeMaxFrames && clone->ram[kGameMode] != kModePlay; f++) clone->runFrame();
     if (clone->ram[kGameMode] != kModePlay || clone->ram[kObjState] != 0) return false;
@@ -51,7 +52,7 @@ void Widescreen::startGlide(Nes& nes) {
     const int dist = std::max(std::abs(bx - ax), std::abs(by - ay));
     if (dist < 3 || dist > 48) return;                                // nothing to smooth, or something unexpected
     glideAx = ax; glideAy = ay; glideBx = bx; glideBy = by;
-    glideN = std::clamp(dist, 8, 32);                                 // about one pixel per frame: Link's walking pace
+    glideN = std::max(2, (int)std::ceil(dist / zelda::kLinkWalkSpeed)); // Link's walking pace, 1.5 pixels a frame
     glideT = 0;
     glideView = v;
     glideAnimate = probeLinkPoses(nes);                               // (false: the picture's own frozen pose)
@@ -73,7 +74,7 @@ void Widescreen::renderGlide(Nes& nes, double windowAspect, Canvas& out) {
     lastLayout = Layout::World;
 
     glideT++;
-    const double f = (double)glideT / glideN;
+    const double f = std::min(1.0, std::floor(zelda::kLinkWalkSpeed * glideT) / std::max(1, std::max(std::abs(glideBx - glideAx), std::abs(glideBy - glideAy))));   // 1, 2, 1, 2 ... pixels a frame, like Link
     const int cx = glideAx + (int)std::lround((glideBx - glideAx) * f);
     const int cy = glideAy + (int)std::lround((glideBy - glideAy) * f);
     const int camX = cx - W / 2, camY = cy - vh / 2;

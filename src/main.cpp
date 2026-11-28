@@ -92,7 +92,7 @@ template <class More> static bool runLite(Nes& nes, int maxFrames, More more) {
     nes.ppu.lite = false;
     return skipped;
 }
-constexpr int kMenuSlideMaxFrames = 400, kScrollMaxFrames = 600;   // (the inventory's slide takes ~78 frames, an overworld scroll ~60: these only stop a game that never gets there)
+constexpr int kMenuSlideMaxFrames = 400, kScrollMaxFrames = 600, kEnterMaxFrames = 60;   // (the inventory's slide takes ~78 frames, an overworld scroll ~60: these only stop a game that never gets there)
 
 int main(int argc, char** argv) {
     std::string romPath;
@@ -285,6 +285,9 @@ int main(int argc, char** argv) {
                 }
                 const bool skipped = runLite(nes, kScrollMaxFrames, [&] { return nes.ram[zelda::kCurLevel] == 0 && nes.ram[zelda::kGameMode] == zelda::kModeScroll && !wide.keepScroll(nes); });   // (the scroll nobody sees: about 60 frames of game logic without the picture; the last frame below is drawn)
                 if (skipped) {
+                    // The game's own frames after the scroll (mode 4: the rows are copied, Link stands still) are skipped too, up to the
+                    // moment he is given back to the player: the glide then ends where the game goes on, with no pause in his walk.
+                    runLite(nes, kEnterMaxFrames, [&] { return nes.ram[zelda::kCurLevel] == 0 && nes.ram[zelda::kGameMode] == zelda::kModeEnter; });
                     shadows.carryTiles(nes);   // the statues of armos that woke here are gone before the first picture of the screen (N)
                     nes.runFrame();            // let the game finish its first frame on the new screen
                     wide.resetLag();

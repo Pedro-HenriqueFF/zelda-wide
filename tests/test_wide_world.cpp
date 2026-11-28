@@ -314,16 +314,18 @@ void section11(Ctx& t) {
             CHECK_EQ(px(248, 144), Ppu::nesColor(0x30)); CHECK_EQ(px(255, 144), Ppu::nesColor(0x30));
             CHECK(px(247, 144) != Ppu::nesColor(0x30)); CHECK(px(256, 144) != Ppu::nesColor(0x30));
             CHECK_EQ(px(10, 10), 0xFF000000);                // status bar is still centred; margins black
-            // the world slides past at one pixel per frame (camera moves right 1 px -> content moves left 1 px)
+            // the world slides past at Link's pace, 1.5 px a frame: 1, 2, 1, 2 ... px (camera moves right -> content moves left)
             std::vector<uint32_t> cur(c.pixels.begin() + row * c.w, c.pixels.begin() + (row + 1) * c.w);
             if (!prevRow.empty()) {
+                const int d = (int)std::floor(1.5 * steps) - (int)std::floor(1.5 * (steps - 1));
+                CHECK(d == 1 || d == 2);
                 bool shifted = true;
-                for (int x = 0; x < 150; x++) if (cur[x] != prevRow[x + 1]) shifted = false;
+                for (int x = 0; x < 150; x++) if (cur[x] != prevRow[x + d]) shifted = false;
                 CHECK(shifted);
             }
             prevRow = cur;
         }
-        CHECK_EQ(steps, 16);
+        CHECK_EQ(steps, 11);                                 // 16 px at 1.5 px a frame
         CHECK(!g.gliding());
         // Back to normal: the game's own picture is placed so that Link is at the middle (room corner at x=248, row 67)
         syncFb(*nes); g.render(*nes, aspect, c);
@@ -352,9 +354,9 @@ void section11(Ctx& t) {
                 shown.push_back(px(248, 144) == Ppu::nesColor(0x30) ? 0 : px(248, 144) == Ppu::nesColor(0x16) ? 1 : -1);
                 shownRight.push_back(px(256, 144) == Ppu::nesColor(0x30) ? 0 : px(256, 144) == Ppu::nesColor(0x16) ? 1 : -1);
             }
-            const std::vector<int> wantShown = {0, 0, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 1, 1};
+            const std::vector<int> wantShown = {0, 0, 1, 1, 1, 1, 1, 1, 0, 0, 0};
             CHECK(shown == wantShown); CHECK(shownRight == wantShown);   // both halves of Link change together
-            CHECK_EQ((int)nes->ram[zelda::kObjAnimFrame], 1); CHECK_EQ((int)nes->ram[zelda::kObjAnimCounter], 5);   // the game goes on with the same step
+            CHECK_EQ((int)nes->ram[zelda::kObjAnimFrame], 0); CHECK_EQ((int)nes->ram[zelda::kObjAnimCounter], 4);   // the game goes on with the same step
             CHECK(!w.glideAnimate);
         }
         {   // probeLinkPoses on a tiny game. Its NMI draws Link's two sprites (left tile $10 + ObjAnimFrame, right $20 + frame, attributes 1/2)

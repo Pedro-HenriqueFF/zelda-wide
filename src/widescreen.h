@@ -6,7 +6,9 @@
 #include "nes.h"
 #include "world.h"
 #include "zelda_ram.h"
+#include <cmath>
 #include <cstdint>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -227,6 +229,7 @@ public:
     LinkPose glidePose[2];
     int      glideAnimC = 6, glideAnimF = 0;                  // frames until the next flip, the pose shown
     static constexpr int kProbeMaxFrames = 150;               // the probe's clone plays at most this long to reach mode 5
+    std::unique_ptr<Nes> probeNes;                            // the probe's clone, made once
     bool probeLinkPoses(const Nes& nes);
     static void glideAnimStep(int& counter, int& frame);      // one game frame of Link's animation counter (DEC; at 0 flip and reload 6)
     bool mazeFading() const { return mazePhase != 0; }                          // the mist closes, covers or lifts: the game waits (main.cpp)

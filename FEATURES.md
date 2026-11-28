@@ -23,9 +23,11 @@ The camera follows Link; changing screens is a short glide instead of the game's
 
 In the overworld the camera is centred on Link and follows him. When the game repositions Link in one go (for example a
 step forward at the end of a screen change) the camera eases over to him over a few frames. Scrolling to the next screen
-skips the game's own scroll animation. At the end of it the game puts Link about 16 pixels forward on the new screen, so
-instead of a jump the game pauses for a moment and Link walks those pixels at his normal pace with the camera following
-him (about a quarter of a second). His legs carry on the walk cycle he was in: the game's own two walking poses (in
+skips the game's own scroll animation, and the game's few standing-still frames after it (mode 4) are skipped too. At the
+end of it the game puts Link about 16 pixels forward on the new screen, so instead of a jump the game pauses for a moment
+and Link walks those pixels at his normal pace (1.5 pixels a frame, 1 and 2 pixels alternating like the game's own steps,
+about a fifth of a second) with the camera following him; when it ends the game is already giving him back to the player,
+so a held direction key walks on without a pause. His legs carry on the walk cycle he was in: the game's own two walking poses (in
 the direction he faces, shield included) alternate every 6 frames from where the counter stood, and the game goes on with
 the same step afterwards, so holding the direction key walks on without a hitch. While he attacks or is halted, or if the
 pose cannot be read from the game, his picture stays as it was. Every other animation (walking out of a cave or dungeon, stairs, dungeon room changes)
